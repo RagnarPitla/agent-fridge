@@ -91,7 +91,7 @@ Commit it:
 
 ```bash
 git add .fridge .gitattributes AGENTS.md
-git commit -m "Add Agent Fridge Board coordination"
+git commit -m "Add Agent Fridge coordination"
 ```
 
 ---
@@ -130,7 +130,7 @@ there so the board reads well.
 
 ### Export your identity
 
-Agent Fridge Board never guesses who you are. It resolves identity in exactly this
+Agent Fridge never guesses who you are. It resolves identity in exactly this
 order, and stops at the first hit:
 
 1. `--agent <name>` on the command line

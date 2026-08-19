@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 640" width="1600" height="640" role="img" aria-labelledby="title desc">
-  <title id="title">Agent Fridge Board - the shared whiteboard for AI coding agents</title>
-  <desc id="desc">A dark original banner explaining the problem of hidden file ownership and shared Markdown overwrites, and the solution of path claims, separate atomic records, and a generated shared board. A refrigerator door holds separate claim and note cards beside model-neutral tool labels.</desc>
+  <title id="title">Agent Fridge - stop AI coding agents from overwriting each other's work</title>
+  <desc id="desc">A dark original banner led by the agentic-engineering problem: isolated coding agents cannot see file ownership and can collide or overwrite work in one checkout. It presents Agent Fridge as a local coordination layer with path claims, leases, write-once notes, stable conflict refusals, atomic records, and a generated shared board. A subtle refrigerator door visual appears only after the problem and solution.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#07101f"/>
@@ -27,12 +27,12 @@
     <style>
       .sans{font-family:"Segoe UI",Inter,system-ui,-apple-system,BlinkMacSystemFont,Arial,sans-serif}
       .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
-      .eyebrow{font-size:18px;font-weight:700;letter-spacing:4px;fill:#79d8ff}
-      .hero{font-size:62px;font-weight:800;letter-spacing:-1px;fill:#ffffff}
-      .tag{font-size:28px;font-weight:650;fill:#edf5ff}
-      .label{font-size:15px;font-weight:800;letter-spacing:1.6px}
-      .sub{font-size:18px;font-weight:550;fill:#b9c7e1}
-      .pill{font-size:17px;font-weight:650;fill:#dce8ff}
+      .eyebrow{font-size:18px;font-weight:800;letter-spacing:4px;fill:#79d8ff}
+      .headline{font-size:50px;font-weight:850;letter-spacing:-1.2px;fill:#ffffff}
+      .support{font-size:19px;font-weight:650;fill:#edf5ff}
+      .label{font-size:14px;font-weight:800;letter-spacing:1.6px}
+      .body{font-size:16px;font-weight:550;fill:#b9c7e1}
+      .mental{font-size:16px;font-weight:700;fill:#dce8ff}
       .cardLabel{font-size:13px;font-weight:800;letter-spacing:1.6px}
       .cardTitle{font-size:18px;font-weight:750;fill:#132039}
       .cardMeta{font-size:14px;font-weight:600;fill:#52627d}
@@ -45,36 +45,25 @@
   <circle cx="1010" cy="615" r="260" fill="#22b8cf" opacity="0.09"/>
 
   <g class="sans">
-    <text class="eyebrow" x="92" y="94">PROBLEM FIRST. SOLUTION BUILT IN.</text>
-    <text class="hero" x="88" y="184">AGENT FRIDGE BOARD</text>
-    <text class="tag" x="92" y="233">The shared whiteboard for AI coding agents</text>
-    <rect x="92" y="255" width="76" height="7" rx="3.5" fill="#43d17d"/>
-    <text class="label" x="92" y="293" fill="#ff9dac">PROBLEM</text>
-    <text class="sub" x="92" y="322">Concurrent agents cannot see file ownership.</text>
-    <text class="sub" x="92" y="349">Shared Markdown can silently overwrite work.</text>
-    <text class="label" x="92" y="390" fill="#72e7a1">SOLUTION</text>
-    <text class="sub" x="92" y="419">Each agent claims paths and writes its own atomic records.</text>
-    <text class="sub" x="92" y="446">The board is generated; no agent rewrites another agent's state.</text>
-
-    <g transform="translate(92 480)">
-      <rect width="136" height="42" rx="21" fill="#172746" stroke="#3b5b8f"/>
-      <text class="pill" x="68" y="27" text-anchor="middle">Claude Code</text>
-      <rect x="148" width="92" height="42" rx="21" fill="#172746" stroke="#3b5b8f"/>
-      <text class="pill" x="194" y="27" text-anchor="middle">Codex</text>
-      <rect x="252" width="62" height="42" rx="21" fill="#172746" stroke="#3b5b8f"/>
-      <text class="pill" x="283" y="27" text-anchor="middle">Pi</text>
-      <rect x="326" width="178" height="42" rx="21" fill="#172746" stroke="#3b5b8f"/>
-      <text class="pill" x="415" y="27" text-anchor="middle">GitHub Copilot</text>
-      <rect x="516" width="96" height="42" rx="21" fill="#172746" stroke="#3b5b8f"/>
-      <text class="pill" x="564" y="27" text-anchor="middle">Cursor</text>
-      <rect x="624" width="94" height="42" rx="21" fill="#172746" stroke="#3b5b8f"/>
-      <text class="pill" x="671" y="27" text-anchor="middle">Human</text>
-      <rect x="0" y="54" width="116" height="42" rx="21" fill="#183b37" stroke="#43d17d"/>
-      <text class="pill" x="58" y="81" text-anchor="middle" fill="#bff7d4">Any CLI</text>
-    </g>
+    <text class="eyebrow" x="92" y="62">AGENT FRIDGE</text>
+    <text class="headline" x="88" y="126">Stop AI coding agents from</text>
+    <text class="headline" x="88" y="179">overwriting each other's work.</text>
+    <text class="support" x="92" y="224">Path claims, leases, write-once notes, and a generated shared board</text>
+    <text class="support" x="92" y="253">for Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any terminal.</text>
+    <rect x="92" y="272" width="76" height="7" rx="3.5" fill="#43d17d"/>
+    <text class="label" x="92" y="307" fill="#ff9dac">PROBLEM</text>
+    <text class="body" x="92" y="334">Agentic coding tools run in isolated terminal sessions. Each can see the repository,</text>
+    <text class="body" x="92" y="358">but not who else is editing which files. In one checkout they can duplicate work,</text>
+    <text class="body" x="92" y="382">collide on paths, overwrite changes, or turn shared Markdown into another race.</text>
+    <text class="label" x="92" y="421" fill="#72e7a1">SOLUTION</text>
+    <text class="body" x="92" y="448">Before editing, each agent claims paths. Overlaps are refused with a stable exit code.</text>
+    <text class="body" x="92" y="472">Each participant writes atomic records; the readable board is generated from them.</text>
+    <text class="body" x="92" y="496">No daemon, cloud service, database, or mandatory MCP server.</text>
+    <text class="label" x="92" y="548" fill="#79d8ff">THINK OF IT LIKE A FRIDGE DOOR FOR THE REPO</text>
+    <text class="mental" x="92" y="577">Each housemate pins their own note, and nobody rewrites somebody else's.</text>
   </g>
 
-  <g transform="translate(890 44)" filter="url(#shadow)">
+  <g transform="translate(1180 170) scale(0.58)" filter="url(#shadow)" opacity="0.78">
     <rect x="0" y="0" width="620" height="552" rx="42" fill="#10182d" stroke="#38517f" stroke-width="2"/>
     <rect x="26" y="24" width="568" height="504" rx="32" fill="url(#door)"/>
     <path d="M310 24V528" stroke="#bac8da" stroke-width="3"/>

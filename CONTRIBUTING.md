@@ -1,4 +1,4 @@
-# Contributing to Agent Fridge Board
+# Contributing to Agent Fridge
 
 Thanks for helping. This project has an unusual shape: it is a **protocol** with a
 reference implementation, not an application. That changes what a good contribution
@@ -229,7 +229,7 @@ mount, or a case-insensitive volume, all of which have bitten locking schemes be
 
 If the bug is "an agent ignored the claim and edited anyway", that is a real and
 interesting issue, but it is an *adapter* or *instruction* issue, not a locking bug.
-Label it as such. Agent Fridge Board is cooperative by design; see
+Label it as such. Agent Fridge is cooperative by design; see
 [docs/faq.md](docs/faq.md) and Section 12 of the spec.
 
 Security issues: do not open an issue. See [SECURITY.md](SECURITY.md).

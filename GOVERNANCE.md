@@ -1,6 +1,6 @@
 # Governance
 
-Agent Fridge Board is small, young, and opinionated. This document says who decides what,
+Agent Fridge is small, young, and opinionated. This document says who decides what,
 so that nobody has to guess.
 
 ---
@@ -141,7 +141,7 @@ majority, including appointing a new lead.
 If the project is ever abandoned, the licence (Apache-2.0), the spec, and the
 conformance vectors are enough for anyone to fork and continue, which is the
 point of writing the spec down separately from the code. **Nothing about
-Agent Fridge Board requires this repository to keep existing.** Your `.fridge/` directory
+Agent Fridge requires this repository to keep existing.** Your `.fridge/` directory
 is plain files that you can read with `ls` and `cat`, and the protocol that
 describes them is a document you already have a copy of.
 
@@ -158,5 +158,5 @@ declined:
 - It will not add a dependency to save a hundred lines.
 - It will not couple itself to one vendor, one editor, or one multiplexer.
 
-Anything that would make Agent Fridge Board stop working on a plane, in an air-gapped
+Anything that would make Agent Fridge stop working on a plane, in an air-gapped
 network, or in a bare `sh` on a machine you just SSH'd into is out of scope.

@@ -1,24 +1,31 @@
-# Agent Fridge Board
+# Agent Fridge
 
 <p align="center">
-  <img src="./docs/assets/agent-fridge-hero.svg" alt="Agent Fridge Board - the shared whiteboard for AI coding agents" width="980">
+  <img src="./docs/assets/agent-fridge-hero.svg" alt="Agent Fridge - stop AI coding agents from overwriting each other's work" width="980">
 </p>
 
-**The shared whiteboard for AI coding agents.**
+## Stop AI coding agents from overwriting each other's work.
 
-**Problem:** Concurrent AI agents in the same checkout cannot see file
-ownership. When they coordinate through one shared Markdown file, a stale
-read-modify-write can silently overwrite another agent's work.
+**Path claims, leases, write-once notes, and a generated shared board for
+Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any terminal.**
 
-**Solution:** Each agent claims paths and writes its own atomic records under
-`.fridge/`. The shared board is generated from those records, so no agent
-rewrites another agent's state.
+**Problem:** Agentic coding tools run in isolated terminal sessions. Each can
+see the repository, but not who else is editing which files. In one shared
+checkout they can duplicate work, collide on paths, overwrite changes, or
+coordinate through one shared Markdown file that becomes another race
+condition.
 
-Local-first. Single native binary, no runtime. Works with any agent that can run
-a command. No daemon, no cloud service, no database, no mandatory MCP server.
+**Solution:** Agent Fridge adds a local coordination layer. Before editing,
+each agent claims paths. Overlaps are refused with a stable exit code. Each
+participant writes its own atomic records; the readable board is generated from
+them. No daemon, cloud service, database, or mandatory MCP server.
 
-Works with **Claude Code, OpenAI Codex, Pi, GitHub Copilot, Cursor, humans, and
-any shell-capable tool**.
+**Think of it like a fridge door for the repo:** every housemate pins their own
+note, one magnet claims a chore, stale magnets fall off, and nobody rewrites
+somebody else's note.
+
+Local-first. Single native binary, no runtime. Works with any agent or person
+that can run a command.
 
 [![CI](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml/badge.svg)](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -50,15 +57,15 @@ any shell-capable tool**.
 ## See it in one minute
 
 <p align="center">
-  <img src="./docs/assets/before-after.svg" alt="Before: two agents overwrite one shared Markdown file and lose 128 lines. After: sharded Agent Fridge Board records generate a board with zero notes lost." width="980">
+  <img src="./docs/assets/before-after.svg" alt="Before: two agents overwrite one shared Markdown file and lose 128 lines. After: sharded Agent Fridge records generate a board with zero notes lost." width="980">
 </p>
 
 The original failure was a read-modify-write collision on shared Markdown.
-Agent Fridge Board replaces that shared writer with path claims and atomic
+Agent Fridge replaces that shared writer with path claims and atomic
 per-agent records, then generates the shared overview.
 
 <p align="center">
-  <img src="./docs/assets/multi-agent-workspace.svg" alt="Illustrative four-agent workspace coordinated by Agent Fridge Board claims" width="980">
+  <img src="./docs/assets/multi-agent-workspace.svg" alt="Illustrative four-agent workspace coordinated by Agent Fridge claims" width="980">
 </p>
 
 This sanitized, illustrative workspace shows a realistic day: one agent reviews
@@ -73,9 +80,10 @@ Herdr, tmux, or plain terminals.
 
 ---
 
-## The story: a shared fridge door
+## The fridge-door mental model
 
-Think about a kitchen shared by a couple, a family, or four roommates.
+The agentic-engineering problem comes first. The fridge door is the memorable
+mental model for how the solution behaves.
 
 The fridge door is where the household coordinates. It works because of a few
 unwritten rules that everybody already understands:
@@ -96,9 +104,9 @@ in a second, OpenAI Codex in a third, Pi in a fourth, Cursor in a fifth, and a
 human in another shell. Same kitchen (one Git checkout), same problem, and none
 of the unwritten rules are enforced.
 
-Agent Fridge Board is that fridge door, made explicit and machine-checkable:
+Agent Fridge is that fridge door, made explicit and machine-checkable:
 
-| Kitchen | Agent Fridge Board | The command |
+| Kitchen | Agent Fridge | The command |
 | --- | --- | --- |
 | The door | `.fridge/DOOR.md` (generated, human-readable) | `fridge board` |
 | Putting your name on the door | a session | `fridge join --agent claude` |
@@ -130,7 +138,7 @@ safe with concurrent writers, and no amount of "please be careful" in an
 instruction file fixes it.
 
 Here is the same failure, reproduced on demand by this repository, and the same
-workload run through Agent Fridge Board:
+workload run through Agent Fridge:
 
 ```
 $ npm run demo
@@ -310,7 +318,7 @@ fridge run --claim "src/api/**" --task "run the codemod" -- npm run codemod
 
 ## Where it works
 
-Agent Fridge Board talks to your agent the way a fridge door talks to a roommate: it
+Agent Fridge talks to your agent the way a fridge door talks to a roommate: it
 does not. **The agent runs a command and reads the exit code.** That is the
 entire integration surface, which is why the compatibility table is boring.
 
@@ -348,7 +356,7 @@ repository instructions and run commands, you have everything you need. See
 | Two machines sharing one checkout over NFS/SMB | Degraded, and it tells you | Cross-host liveness cannot be verified; `E_FOREIGN_HOST` unless you pass `--allow-multihost` |
 | A repo inside Dropbox, OneDrive, or iCloud Drive | Degraded, and it tells you | `fridge doctor` warns; file sync can delay or duplicate writes |
 
-Agent Fridge Board never emits ANSI colour or non-ASCII characters in v0.1. That is not
+Agent Fridge never emits ANSI colour or non-ASCII characters in v0.1. That is not
 an oversight, it is the reason the PowerShell and CI logs stay readable.
 `--no-color` is accepted and documented as a no-op.
 
@@ -356,7 +364,7 @@ an oversight, it is the reason the PowerShell and CI logs stay readable.
 
 ## This is not a new idea, and the differentiator is not the idea
 
-Shared coordination boards are old and well understood. Agent Fridge Board invents
+Shared coordination boards are old and well understood. Agent Fridge invents
 none of this, claims no first, and should not be sold as novel:
 
 - **Blackboard architectures** (HEARSAY-II, 1980) had independent knowledge
@@ -750,7 +758,7 @@ generated views, adapters, migration, doctor, a real simulation.
 assignment or scheduling, merge-conflict resolution, a web UI, mandatory hooks,
 telemetry of any kind, and any dependency on a model provider.
 
-Agent Fridge Board coordinates who is working where. It does not do the work, and it
+Agent Fridge coordinates who is working where. It does not do the work, and it
 does not pretend to be Git.
 
 ---
@@ -762,7 +770,7 @@ Issues and pull requests are welcome. Start with
 needs a test, the exit-code table only ever grows, and everything shipped stays
 ASCII and dependency-free.
 
-Security reports: [SECURITY.md](SECURITY.md). Agent Fridge Board is a cooperative tool
+Security reports: [SECURITY.md](SECURITY.md). Agent Fridge is a cooperative tool
 with an explicit trust boundary; read
 [the threat model](spec/protocol-v0.1.md#12-security-and-trust-boundaries)
 before filing.

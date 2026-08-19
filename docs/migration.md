@@ -52,7 +52,7 @@ agent B appends and writes    (212 lines)   <- A's 15 lines are gone
 
 That is how about 128 lines disappeared. Nobody was careless.
 
-Agent Fridge Board splits the two files by what they actually are:
+Agent Fridge splits the two files by what they actually are:
 
 | Old file | What it was really for | New home |
 | --- | --- | --- |
@@ -131,7 +131,7 @@ usually names its author:
 
 That is the correct record of what happened: claude imported a line that says
 copilot was on `src/ui`. It is not a claim that copilot wrote this note through
-Agent Fridge Board.
+Agent Fridge.
 
 A practical consequence: pick who runs the migration deliberately. A neutral
 name reads better in `fridge log` a year from now than one of the agents' names:
@@ -255,7 +255,7 @@ fridge migrate --dry-run                # check the count looks right
 fridge migrate                          # import, do not freeze yet
 
 git add .fridge .gitattributes
-git commit -m "Import shared Markdown history into Agent Fridge Board notes"
+git commit -m "Import shared Markdown history into Agent Fridge notes"
 ```
 
 `--no-adapters` keeps the agent instruction files untouched for now, so nothing
@@ -273,7 +273,7 @@ fridge adapters install
 git add AGENTS.md CLAUDE.md .github/copilot-instructions.md \
         .codex/instructions.md .cursor/rules/agent-fridge.mdc \
         docs/AGENT-COORDINATION.md
-git commit -m "Add Agent Fridge Board coordination rules for agents"
+git commit -m "Add Agent Fridge coordination rules for agents"
 ```
 
 Restart every agent session, because instruction files are read at session
@@ -335,7 +335,7 @@ grep -rn "shared-development-updates\|To-do.done" \
 ```
 
 Anything that says "append your status to `shared-development-updates.md`" must
-go, or agents will keep doing it. The Agent Fridge Board block already says to use
+go, or agents will keep doing it. The Agent Fridge block already says to use
 `fridge pin` instead:
 
 > 4. Report progress with `fridge pin`, not by editing a shared Markdown file.
@@ -344,7 +344,7 @@ Finally, commit:
 
 ```bash
 git add -A
-git commit -m "Freeze legacy coordination files; Agent Fridge Board is the board"
+git commit -m "Freeze legacy coordination files; Agent Fridge is the board"
 ```
 
 ---
@@ -423,7 +423,7 @@ fridge log --limit 500 --type legacy.update | wc -l
 ```
 
 The two `fridge log` numbers should add up to the number `migrate` reported.
-Note that `.fridge/notes/` also contains notes that Agent Fridge Board itself wrote
+Note that `.fridge/notes/` also contains notes that Agent Fridge itself wrote
 (`workspace.initialized`, `session.started`), so the `find` count is higher.
 
 ### 3. Spot-check the text is verbatim

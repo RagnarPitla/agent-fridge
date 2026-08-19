@@ -3,9 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Agent Fridge Board is the shared whiteboard for AI coding agents: claim paths, write atomic records, and generate the board without rewriting another agent's state.">
+  <meta name="description" content="Stop AI coding agents from overwriting each other's work. Agent Fridge adds path claims, leases, write-once notes, stable conflict refusals, atomic records, and a generated shared board to any terminal.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='3' width='18' height='26' rx='4' fill='%232563eb'/%3E%3Cpath d='M9 15h14' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
-  <title>Agent Fridge Board - Visual Story</title>
+  <title>Agent Fridge - Visual Story</title>
   <style>
     :root {
       color-scheme: light;
@@ -252,6 +252,11 @@
       margin: 0 auto 28px;
       text-align: left;
     }
+    .intro .mental-model {
+      max-width: 1060px;
+      margin: 0 auto 28px;
+      text-align: left;
+    }
     .pill {
       display: inline-flex;
       margin-bottom: 10px;
@@ -433,9 +438,9 @@
 
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="../../README.md" aria-label="Agent Fridge Board README">
+      <a class="brand" href="../../README.md" aria-label="Agent Fridge README">
         <span class="brand-mark" aria-hidden="true"></span>
-        <span>Agent Fridge Board</span>
+        <span>Agent Fridge</span>
       </a>
       <nav aria-label="Visual story sections">
         <a href="#scope">Scope</a>
@@ -450,35 +455,45 @@
 
   <main id="main">
     <section class="intro" aria-labelledby="page-title">
-      <p class="eyebrow">Public visual story</p>
-      <h1 id="page-title">Agent Fridge Board</h1>
+      <p class="eyebrow">Agent Fridge</p>
+      <h1 id="page-title">Stop AI coding agents from overwriting each other's work.</h1>
       <p class="lede">
-        <strong>The shared whiteboard for AI coding agents.</strong>
+        <strong>Path claims, leases, write-once notes, and a generated shared
+        board for Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and
+        any terminal.</strong>
       </p>
       <div class="cards problem-solution" aria-label="Problem and solution">
         <article class="card">
           <span class="pill">Problem</span>
-          <h3>Shared ownership is invisible</h3>
+          <h3>Each terminal sees the repo, not the other editors</h3>
           <p>
-            Concurrent AI agents in the same checkout cannot see file
-            ownership. When they coordinate through one shared Markdown file,
-            a stale write can silently overwrite another agent's work.
+            Agentic coding tools run in isolated terminal sessions. Each can see
+            the repository, but not who else is editing which files. In one
+            shared checkout they can duplicate work, collide on paths,
+            overwrite changes, or coordinate through one shared Markdown file
+            that becomes another race condition.
           </p>
         </article>
         <article class="card">
           <span class="pill">Solution</span>
-          <h3>Authority is sharded; the board is derived</h3>
+          <h3>Claim paths; generate the readable board</h3>
           <p>
-            Each agent claims paths and writes its own atomic records. The
-            shared board is generated, so no agent rewrites another agent's
-            state.
+            Agent Fridge adds a local coordination layer. Before editing, each
+            agent claims paths. Overlaps are refused with a stable exit code.
+            Each participant writes its own atomic records; the readable board
+            is generated from them. No daemon, cloud service, database, or
+            mandatory MCP server.
           </p>
         </article>
       </div>
-      <p class="lede">
-        Works with Claude Code, OpenAI Codex, Pi, GitHub Copilot, Cursor,
-        humans, and any shell-capable tool.
-      </p>
+      <div class="callout mental-model">
+        <span class="callout-mark" aria-hidden="true">M</span>
+        <p>
+          <strong>Think of it like a fridge door for the repo:</strong> every
+          housemate pins their own note, one magnet claims a chore, stale
+          magnets fall off, and nobody rewrites somebody else's note.
+        </p>
+      </div>
       <div class="actions" aria-label="Project links">
         <a class="button primary" href="https://github.com/RagnarPitla/agent-fridge">View the repository</a>
         <a class="button" href="../quickstart.md">Run the quickstart</a>
@@ -486,7 +501,7 @@
       </div>
 
       <figure class="hero-frame">
-        <img src="./agent-fridge-hero.svg" alt="Agent Fridge Board banner explaining hidden file ownership and shared Markdown overwrites, then showing path claims and separate atomic records feeding a generated board.">
+        <img src="./agent-fridge-hero.svg" alt="Agent Fridge banner led by the problem of isolated coding agents colliding in one checkout, followed by path claims, leases, atomic records, stable refusals, and a generated shared board.">
         <figcaption>
           Original project artwork. Vendor names are text labels, not trademark logo artwork.
         </figcaption>
@@ -545,7 +560,7 @@
         </p>
       </div>
       <figure class="visual-frame">
-        <img src="./before-after.svg" alt="Agent Fridge Board problem and solution: one shared Markdown writer loses 128 lines, while per-agent atomic records feed a generated board and lose zero notes.">
+        <img src="./before-after.svg" alt="Agent Fridge problem and solution: one shared Markdown writer loses 128 lines, while per-agent atomic records feed a generated board and lose zero notes.">
         <figcaption>
           The real incident and the structural fix. The repository's
           <code>npm run demo</code> reproduces the same race with a variable loss count.
@@ -573,10 +588,10 @@
         </p>
       </div>
       <figure class="visual-frame">
-        <img src="./multi-agent-workspace.svg" alt="Illustrative four-pane terminal workspace with Claude Code, GitHub Copilot, OpenAI Codex, and Pi coordinated by exact Agent Fridge Board claims.">
+        <img src="./multi-agent-workspace.svg" alt="Illustrative four-pane terminal workspace with Claude Code, GitHub Copilot, OpenAI Codex, and Pi coordinated by exact Agent Fridge claims.">
         <figcaption>
           Illustrative workspace with fictional project data. It can represent
-          Herdr, tmux, or four plain terminals; Agent Fridge Board is the coordination
+          Herdr, tmux, or four plain terminals; Agent Fridge is the coordination
           layer, not the multiplexer.
         </figcaption>
       </figure>
@@ -679,7 +694,7 @@
         <p class="eyebrow">5. Real CLI evidence</p>
         <h2 id="transcript-title">Two terminals, one honest refusal</h2>
         <p>
-          This transcript was captured from Agent Fridge Board 0.2.0 in a fresh local
+          This transcript was captured from Agent Fridge 0.2.0 in a fresh local
           Git workspace on 2026-08-19. The identifiers and timestamps are
           run-specific. The excerpt is copied from that run; only line wrapping
           is adjusted for the page.
@@ -767,7 +782,7 @@ Last notes:
         each terminal an actor name, and claim paths before editing.
       </p>
       <div class="actions">
-        <a class="button primary" href="../../README.md#install">Install Agent Fridge Board</a>
+        <a class="button primary" href="../../README.md#install">Install Agent Fridge</a>
         <a class="button" href="../quickstart.md">Follow the quickstart</a>
         <a class="button" href="../../spec/protocol-v0.1.md">Read the protocol</a>
       </div>

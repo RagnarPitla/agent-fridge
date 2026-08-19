@@ -2,7 +2,7 @@
 
 How `fridge adapters install` puts one canonical block of rules into your agent's instruction file, and keeps it current.
 
-An agent participates in Agent Fridge Board by running a command and reading an exit
+An agent participates in Agent Fridge by running a command and reading an exit
 code. It has to be told to do that. Adapters are how: one short, canonical rule
 text, spliced into whichever vendor instruction files your repository already
 uses, with a hash so drift is detectable.
@@ -238,7 +238,7 @@ FIXED  CLAUDE.md has an out-of-date instruction block.
 ```
 
 Add `fridge adapters check` to CI to keep a repository honest after a
-Agent Fridge Board upgrade. See [./interop.md](./interop.md).
+Agent Fridge upgrade. See [./interop.md](./interop.md).
 
 ---
 
@@ -429,7 +429,7 @@ In `.claude/settings.json`:
 
 ```bash
 #!/usr/bin/env bash
-# Refuse an edit that is outside this agent's Agent Fridge Board claims.
+# Refuse an edit that is outside this agent's Agent Fridge claims.
 # Reads the PreToolUse payload on stdin and extracts the target path.
 set -uo pipefail
 
@@ -454,14 +454,14 @@ case $? in
   2)  exit 0 ;;   # usage or path outside the repo: not the hook's business
   3)  exit 0 ;;   # no .fridge/ here: nothing to enforce
   7)  exit 0 ;;   # nobody joined: do not block a repo that is not using this
-  *)  echo "Agent Fridge Board: $path is not covered by a claim you hold." >&2
+  *)  echo "Agent Fridge: $path is not covered by a claim you hold." >&2
       echo "Run: fridge claim \"$path\" --task \"<what you are doing>\"" >&2
       exit 2 ;;   # non-zero tells Claude Code to block the tool call
 esac
 ```
 
 Two things to note. It exits `0` on `E_NOT_INITIALIZED` and `E_NO_SESSION`, so
-the hook is harmless in a checkout that is not using Agent Fridge Board. And the hook
+the hook is harmless in a checkout that is not using Agent Fridge. And the hook
 is per-machine configuration, not protocol: an agent on another machine without
 the hook still coordinates correctly through the instruction block.
 
@@ -533,7 +533,7 @@ instruction files once at start. Then check the file is the one that agent
 actually reads (`fridge adapters list` shows all six). If it still ignores it,
 that is an advisory-system limitation, not a bug: add the pre-commit hook.
 
-**`fridge adapters check` exits 30 after upgrading Agent Fridge Board.** Expected. The
+**`fridge adapters check` exits 30 after upgrading Agent Fridge.** Expected. The
 rule text changed, so the hash changed. Run `fridge adapters install` and commit
 the result.
 

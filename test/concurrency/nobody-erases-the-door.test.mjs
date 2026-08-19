@@ -4,7 +4,7 @@
 // Two terminals shared one Markdown file for live status. One agent read it,
 // appended, wrote it back, and destroyed about 128 lines of the other agent's
 // work. This test reproduces that failure with the naive approach, then proves
-// the same traffic through Agent Fridge Board loses nothing.
+// the same traffic through Agent Fridge loses nothing.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

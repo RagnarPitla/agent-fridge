@@ -6,7 +6,7 @@
 #
 #   ./without-fridge.sh
 #
-# It does not use Agent Fridge Board at all. That is the point.
+# It does not use Agent Fridge at all. That is the point.
 
 set -uo pipefail
 cd "$(dirname "$0")"

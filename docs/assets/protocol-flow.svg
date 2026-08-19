@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 700" width="1600" height="700" role="img" aria-labelledby="title desc">
-  <title id="title">Agent Fridge Board problem, solution, and protocol flow</title>
+  <title id="title">Agent Fridge problem, solution, and protocol flow</title>
   <desc id="desc">Problem: concurrent AI agents cannot see file ownership and can overwrite shared Markdown. Solution: shell-capable agents and humans run fridge claim, check, pin, and release; those commands write separate atomic records under .fridge, and DOOR.md is generated as a rebuildable shared board.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -35,7 +35,7 @@
   </defs>
 
   <rect width="1600" height="700" rx="26" fill="url(#bg)"/>
-  <text class="sans kicker" x="800" y="42" text-anchor="middle">AGENT FRIDGE BOARD</text>
+  <text class="sans kicker" x="800" y="42" text-anchor="middle">AGENT FRIDGE</text>
   <text class="sans heading" x="800" y="82" text-anchor="middle">Problem: hidden ownership and shared Markdown can silently overwrite work.</text>
   <text class="sans heading" x="800" y="116" text-anchor="middle">Solution: path claims, atomic records, and a generated board.</text>
 
