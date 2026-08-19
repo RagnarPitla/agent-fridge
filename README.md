@@ -97,24 +97,37 @@ that is enforced by
 Pick one. Node.js 20.11 or newer is the only requirement.
 
 ```bash
-# try it without installing anything
-npx fridgeboard init
+# straight from GitHub, no clone, nothing to build
+npm install -g github:RagnarPitla/fridgeboard
 
-# install for everything on this machine
-npm install -g fridgeboard
+# or pin the release
+npm install -g github:RagnarPitla/fridgeboard#v0.1.0
 
-# install for one project
-npm install --save-dev fridgeboard
+# or clone and link, if you want to read the source first (it is 3k lines)
+git clone https://github.com/RagnarPitla/fridgeboard.git
+cd fridgeboard && npm link
 ```
 
+No npm account, no registry, no build step. Once the package is on npm, the
+usual `npx fridgeboard init` and `npm install -g fridgeboard` will work too.
+
+Not a Node person? You do not have to be. Node is a runtime for the CLI, the
+same way Git is a runtime for `git`. There is nothing to configure and nothing
+is added to your project.
+
 No compiler, no post-install script, no native module, no lockfile churn:
-**FridgeBoard has zero runtime dependencies.** `npm ls --all` shows one line.
+**FridgeBoard has zero runtime dependencies.** `npm ls -g fridgeboard --all`
+shows one line, and that line is FridgeBoard.
 
 Verify:
 
 ```bash
 fridge version
+# fridgeboard 0.1.0 (protocol wcp/0.1)
 ```
+
+If `fridge` is not found, your npm global bin is not on `PATH`. `npm bin -g`
+prints the directory to add.
 
 ---
 
