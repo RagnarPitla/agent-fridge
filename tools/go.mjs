@@ -21,12 +21,19 @@ const local = path.join(repo, '.toolchain', 'go', 'bin', `go${exe}`);
 const go = fs.existsSync(local) ? local : `go${exe}`;
 const gofmt = fs.existsSync(local) ? path.join(path.dirname(local), `gofmt${exe}`) : `gofmt${exe}`;
 
+// Only redirect the toolchain and caches when this checkout vendored its own
+// Go. On a machine with a real Go installation, including CI, inherit it: a
+// build tool that quietly overrides GOTOOLCHAIN produces failures that look
+// like source errors and are not.
+const vendored = fs.existsSync(local);
 const env = {
   ...process.env,
-  GOTOOLCHAIN: 'local',
-  GOMODCACHE: path.join(repo, '.scratch', 'gomodcache'),
-  GOCACHE: path.join(repo, '.scratch', 'gocache'),
   GOFLAGS: process.env.GOFLAGS || '',
+  ...(vendored ? {
+    GOTOOLCHAIN: 'local',
+    GOMODCACHE: path.join(repo, '.scratch', 'gomodcache'),
+    GOCACHE: path.join(repo, '.scratch', 'gocache'),
+  } : {}),
 };
 
 const run = (cmd, args, extra = {}) => {

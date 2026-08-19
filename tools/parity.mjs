@@ -15,21 +15,28 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const repo = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const goBin = path.join(repo, '.scratch', 'parity', 'fridge');
+const goBin = path.join(repo, '.scratch', 'parity', process.platform === 'win32' ? 'fridge.exe' : 'fridge');
 const nodeCli = path.join(repo, 'bin', 'fridge.mjs');
 
-const build = spawnSync(path.join(repo, '.toolchain', 'go', 'bin', 'go'),
-  ['build', '-o', goBin, './cmd/fridge'],
-  {
-    cwd: repo,
-    stdio: 'inherit',
-    env: {
-      ...process.env,
-      GOTOOLCHAIN: 'local',
-      GOMODCACHE: path.join(repo, '.scratch', 'gomodcache'),
-      GOCACHE: path.join(repo, '.scratch', 'gocache'),
-    },
-  });
+// Use the vendored toolchain when this checkout has one, otherwise whatever Go
+// is on PATH. CI has the latter; a contributor who ran the bootstrap has the
+// former. Neither should have to know about the other.
+const vendoredGo = path.join(repo, '.toolchain', 'go', 'bin', process.platform === 'win32' ? 'go.exe' : 'go');
+const usingVendored = fs.existsSync(vendoredGo);
+const goExe = usingVendored ? vendoredGo : 'go';
+
+const goEnv = { ...process.env };
+if (usingVendored) {
+  goEnv.GOTOOLCHAIN = 'local';
+  goEnv.GOMODCACHE = path.join(repo, '.scratch', 'gomodcache');
+  goEnv.GOCACHE = path.join(repo, '.scratch', 'gocache');
+}
+
+const build = spawnSync(goExe, ['build', '-o', goBin, './cmd/fridge'], { cwd: repo, stdio: 'inherit', env: goEnv });
+if (build.error) {
+  process.stderr.write(`parity: cannot run '${goExe}'. Install Go 1.21+ or run the toolchain bootstrap.\n`);
+  process.exit(1);
+}
 if (build.status !== 0) process.exit(1);
 
 const fresh = (name) => {
