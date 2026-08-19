@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 700" width="1600" height="700" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Fridge protocol flow</title>
+  <desc id="desc">Shell-capable agents and humans run fridge claim, check, pin, and release. Those commands write separate authoritative records under the .fridge directory. DOOR.md is generated from those records as a rebuildable overview.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#edf3fb"/>
+    </linearGradient>
+    <linearGradient id="command" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#172847"/>
+      <stop offset="1" stop-color="#101b32"/>
+    </linearGradient>
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#273854" flood-opacity="0.14"/>
+    </filter>
+    <marker id="arrow" markerWidth="11" markerHeight="11" refX="9" refY="5.5" orient="auto">
+      <path d="M0 0L11 5.5L0 11Z" fill="#3d6fe5"/>
+    </marker>
+    <style>
+      .sans{font-family:"Segoe UI",Inter,system-ui,-apple-system,BlinkMacSystemFont,Arial,sans-serif}
+      .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+      .kicker{font-size:17px;font-weight:800;letter-spacing:3px;fill:#3d6fe5}
+      .heading{font-size:34px;font-weight:850;fill:#17233c}
+      .panelHeading{font-size:26px;font-weight:850;fill:#17233c}
+      .panelHeadingLight{font-size:26px;font-weight:850;fill:#ffffff}
+      .body{font-size:19px;font-weight:550;fill:#59677f}
+      .bodyLight{font-size:18px;font-weight:550;fill:#aebcda}
+      .stage{font-size:16px;font-weight:800;letter-spacing:1.6px}
+      .chip{font-size:17px;font-weight:700;fill:#263651}
+      .cmd{font-size:20px;font-weight:700;fill:#eaf2ff}
+      .file{font-size:17px;font-weight:700;fill:#24344f}
+      .meta{font-size:15px;font-weight:600;fill:#66758e}
+      .doorTitle{font-size:27px;font-weight:850;fill:#ffffff}
+    </style>
+  </defs>
+
+  <rect width="1600" height="700" rx="26" fill="url(#bg)"/>
+  <text class="sans kicker" x="800" y="52" text-anchor="middle">THE PROTOCOL IN ONE LINE</text>
+  <text class="sans heading" x="800" y="96" text-anchor="middle">Shell command in, sharded record out, generated door for everyone</text>
+
+  <path d="M370 356H462" fill="none" stroke="#3d6fe5" stroke-width="5" marker-end="url(#arrow)"/>
+  <path d="M794 356H882" fill="none" stroke="#3d6fe5" stroke-width="5" marker-end="url(#arrow)"/>
+  <path d="M1236 356H1322" fill="none" stroke="#3d6fe5" stroke-width="5" marker-end="url(#arrow)"/>
+
+  <g transform="translate(46 142)" filter="url(#shadow)">
+    <rect width="324" height="424" rx="24" fill="#ffffff" stroke="#cfd9e8" stroke-width="2"/>
+    <text class="sans stage" x="24" y="40" fill="#3d6fe5">1 - PARTICIPANTS</text>
+    <text class="sans panelHeading" x="24" y="80">Any shell-capable tool</text>
+    <text class="sans body" x="24" y="112">No model API or daemon required.</text>
+
+    <g class="sans">
+      <rect x="24" y="142" width="130" height="42" rx="21" fill="#edf4ff" stroke="#bbcae2"/>
+      <text class="chip" x="89" y="169" text-anchor="middle">Claude Code</text>
+      <rect x="170" y="142" width="88" height="42" rx="21" fill="#f3edff" stroke="#d0c1ea"/>
+      <text class="chip" x="214" y="169" text-anchor="middle">Codex</text>
+      <rect x="274" y="142" width="50" height="42" rx="21" fill="#fff7d8" stroke="#d9ca80"/>
+      <text class="chip" x="299" y="169" text-anchor="middle">Pi</text>
+
+      <rect x="24" y="198" width="160" height="42" rx="21" fill="#eaf8ff" stroke="#aed7e8"/>
+      <text class="chip" x="104" y="225" text-anchor="middle">GitHub Copilot</text>
+      <rect x="200" y="198" width="100" height="42" rx="21" fill="#edf4ff" stroke="#bbcae2"/>
+      <text class="chip" x="250" y="225" text-anchor="middle">Cursor</text>
+
+      <rect x="24" y="254" width="92" height="42" rx="21" fill="#eefaf3" stroke="#add7be"/>
+      <text class="chip" x="70" y="281" text-anchor="middle">Human</text>
+      <rect x="132" y="254" width="128" height="42" rx="21" fill="#eefaf3" stroke="#add7be"/>
+      <text class="chip" x="196" y="281" text-anchor="middle">Any CLI</text>
+    </g>
+
+    <rect x="24" y="326" width="276" height="72" rx="14" fill="#f5f7fb" stroke="#d7dfeb"/>
+    <text class="mono file" x="42" y="356">$ export FRIDGE_ACTOR=me</text>
+    <text class="sans meta" x="42" y="382">One identity per terminal or pane</text>
+  </g>
+
+  <g transform="translate(470 142)" filter="url(#shadow)">
+    <rect width="324" height="424" rx="24" fill="url(#command)" stroke="#3b5687" stroke-width="2"/>
+    <text class="sans stage" x="24" y="40" fill="#79d8ff">2 - CLI CONTRACT</text>
+    <text class="sans panelHeadingLight" x="24" y="78">Commands and</text>
+    <text class="sans panelHeadingLight" x="24" y="108">exit codes</text>
+    <text class="sans bodyLight" x="24" y="138">A process and an exit code.</text>
+
+    <g class="mono">
+      <rect x="24" y="156" width="276" height="44" rx="12" fill="#223657"/>
+      <text class="cmd" x="42" y="185">fridge claim</text>
+      <rect x="24" y="210" width="276" height="44" rx="12" fill="#223657"/>
+      <text class="cmd" x="42" y="239">fridge check</text>
+      <rect x="24" y="264" width="276" height="44" rx="12" fill="#223657"/>
+      <text class="cmd" x="42" y="293">fridge pin</text>
+      <rect x="24" y="318" width="276" height="44" rx="12" fill="#223657"/>
+      <text class="cmd" x="42" y="347">fridge release</text>
+    </g>
+
+    <text class="sans meta" x="24" y="396" fill="#9fb0cf">0 = proceed</text>
+    <text class="sans meta" x="132" y="396" fill="#ff9dac">10 = conflict refusal</text>
+  </g>
+
+  <g transform="translate(890 142)" filter="url(#shadow)">
+    <rect width="346" height="424" rx="24" fill="#ffffff" stroke="#b8d8c5" stroke-width="2"/>
+    <text class="sans stage" x="24" y="40" fill="#107c4b">3 - AUTHORITATIVE STATE</text>
+    <text class="sans panelHeading" x="24" y="80">.fridge/ records</text>
+    <text class="sans body" x="24" y="112">One writer per authoritative record.</text>
+
+    <g transform="translate(24 138)">
+      <rect width="298" height="52" rx="12" fill="#eefaf3" stroke="#b8d8c5"/>
+      <circle cx="24" cy="28" r="8" fill="#5b8cff"/>
+      <text class="mono file" x="44" y="26">claims/clm_A.json</text>
+      <text class="sans meta" x="44" y="45">review-claude owns src/api/**</text>
+
+      <rect y="62" width="298" height="52" rx="12" fill="#f3edff" stroke="#d0c1ea"/>
+      <circle cx="24" cy="88" r="8" fill="#9a75e8"/>
+      <text class="mono file" x="44" y="86">claims/clm_B.json</text>
+      <text class="sans meta" x="44" y="105">api-codex owns src/db/**</text>
+
+      <rect y="124" width="298" height="52" rx="12" fill="#fff8db" stroke="#d9ca80"/>
+      <circle cx="24" cy="150" r="8" fill="#f2bd3f"/>
+      <text class="mono file" x="44" y="148">notes/evt_C.json</text>
+      <text class="sans meta" x="44" y="167">write-once progress note</text>
+
+      <rect y="186" width="298" height="52" rx="12" fill="#edf4ff" stroke="#bbcae2"/>
+      <circle cx="24" cy="212" r="8" fill="#43d17d"/>
+      <text class="mono file" x="44" y="210">leases/lea_A.json</text>
+      <text class="sans meta" x="44" y="229">expiring ownership heartbeat</text>
+    </g>
+
+    <text class="sans meta" x="24" y="404" fill="#107c4b">Separate records. Machine-checkable.</text>
+  </g>
+
+  <g transform="translate(1330 142)" filter="url(#shadow)">
+    <rect width="224" height="424" rx="24" fill="#13233d" stroke="#486895" stroke-width="2"/>
+    <text class="sans stage" x="24" y="40" fill="#86efad">4 - HUMAN VIEW</text>
+    <rect x="22" y="68" width="180" height="236" rx="18" fill="#f8fbff"/>
+    <rect x="22" y="68" width="180" height="44" rx="18" fill="#e7effa"/>
+    <rect x="22" y="98" width="180" height="14" fill="#e7effa"/>
+    <circle cx="44" cy="90" r="8" fill="#43d17d"/>
+    <text class="mono" x="60" y="96" font-size="15" font-weight="800" fill="#29405f">GENERATED</text>
+    <text class="mono" x="112" y="148" text-anchor="middle" font-size="22" font-weight="850" fill="#17233c">DOOR.md</text>
+    <rect x="44" y="174" width="136" height="8" rx="4" fill="#91a7c5"/>
+    <rect x="44" y="194" width="112" height="8" rx="4" fill="#c1cde0"/>
+    <rect x="44" y="214" width="128" height="8" rx="4" fill="#c1cde0"/>
+    <rect x="44" y="244" width="136" height="8" rx="4" fill="#91a7c5"/>
+    <rect x="44" y="264" width="94" height="8" rx="4" fill="#c1cde0"/>
+    <text class="sans meta" x="112" y="290" text-anchor="middle">readable at a glance</text>
+
+    <text class="sans doorTitle" x="112" y="344" text-anchor="middle">Derived</text>
+    <text class="sans meta" x="112" y="372" text-anchor="middle" fill="#b9c8e2">Never hand-authored</text>
+    <text class="sans meta" x="112" y="396" text-anchor="middle" fill="#b9c8e2">Safe to regenerate</text>
+  </g>
+
+  <g transform="translate(274 610)">
+    <rect width="1052" height="58" rx="29" fill="#17233c"/>
+    <text class="sans" x="526" y="38" text-anchor="middle" font-size="25" font-weight="850" fill="#ffffff">Sharded authority, derived overview</text>
+  </g>
+</svg>

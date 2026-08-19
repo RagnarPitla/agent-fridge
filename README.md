@@ -1,5 +1,9 @@
 # Agent Fridge
 
+<p align="center">
+  <img src="./docs/assets/agent-fridge-hero.svg" alt="Agent Fridge - one shared fridge door, no shared-writer file" width="980">
+</p>
+
 **One shared fridge door for every coding agent in your checkout.** Several AI
 coding agents and humans work in the same Git repository without overwriting or
 interrupting each other.
@@ -12,10 +16,39 @@ overwrite. The readable board is generated from those records, never edited.
 Local-first. Single native binary, no runtime. Works with any agent that can run
 a command. No daemon, no cloud service, no database, no mandatory MCP server.
 
+Works with **Claude Code, OpenAI Codex, Pi, GitHub Copilot, Cursor, humans, and
+any shell-capable tool**.
+
 [![CI](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml/badge.svg)](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20.11-green.svg)](package.json)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](package.json)
+
+---
+
+## See it in one minute
+
+<p align="center">
+  <img src="./docs/assets/before-after.svg" alt="Before: two agents overwrite one shared Markdown file and lose 128 lines. After: sharded Agent Fridge records generate a board with zero notes lost." width="980">
+</p>
+
+The original failure was a read-modify-write collision on shared Markdown.
+Agent Fridge replaces that shared writer with per-agent claims and write-once
+notes, then generates the overview.
+
+<p align="center">
+  <img src="./docs/assets/multi-agent-workspace.svg" alt="Illustrative four-agent workspace coordinated by Agent Fridge claims" width="980">
+</p>
+
+This sanitized, illustrative workspace shows a realistic day: one agent reviews
+PR #41, one designs the checkout flow, one builds the API for PR #42, and one
+prepares docs and release work for PR #43. They share one checkout while narrow
+claims stop path collisions before editing begins. The same pattern works in
+Herdr, tmux, or plain terminals.
+
+[Open the full visual story](docs/assets/visual-story.html) |
+[Run the reproducible before/after demo](#the-actual-failure-this-prevents) |
+[Follow the two-terminal quickstart](docs/quickstart.md)
 
 ---
 
@@ -38,8 +71,9 @@ unwritten rules that everybody already understands:
   is doing what without asking anybody.
 
 Now replace the roommates with Claude Code in one terminal, GitHub Copilot CLI
-in a second, Codex in a third, and you in a fourth. Same kitchen (one Git
-checkout), same problem, and none of the unwritten rules are enforced.
+in a second, OpenAI Codex in a third, Pi in a fourth, Cursor in a fifth, and a
+human in another shell. Same kitchen (one Git checkout), same problem, and none
+of the unwritten rules are enforced.
 
 Agent Fridge is that fridge door, made explicit and machine-checkable:
 
@@ -266,6 +300,7 @@ entire integration surface, which is why the compatibility table is boring.
 | Claude Code | `CLAUDE.md` block + CLI; optional `PreToolUse` hook | No |
 | GitHub Copilot CLI | `.github/copilot-instructions.md` block + CLI | No |
 | OpenAI Codex / Codex CLI | `AGENTS.md` block + CLI | No |
+| Pi | generic `AGENTS.md` block + CLI | No |
 | Cursor | `.cursor/rules/agent-fridge.mdc` block + CLI | No |
 | Windsurf, Cline, Aider, Continue | generic `AGENTS.md` block + CLI | No |
 | Any agent with shell access | `fridge claim` / `fridge check` | No |
@@ -663,6 +698,7 @@ the repository root cannot assert a claim and cannot block one.
 
 | Document | What is in it |
 | --- | --- |
+| [docs/assets/visual-story.html](docs/assets/visual-story.html) | Public visual walkthrough, compatibility matrix, and a real two-terminal transcript |
 | [spec/protocol-v0.1.md](spec/protocol-v0.1.md) | The complete protocol: schemas, algorithms, invariants. Enough to reimplement in another language |
 | [spec/exit-codes.md](spec/exit-codes.md) | The exit-code contract (generated) |
 | [docs/quickstart.md](docs/quickstart.md) | A longer walkthrough with two real terminals |

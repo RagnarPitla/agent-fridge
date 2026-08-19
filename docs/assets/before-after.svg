@@ -1,0 +1,160 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 840" width="1600" height="840" role="img" aria-labelledby="title desc">
+  <title id="title">Before and after Agent Fridge</title>
+  <desc id="desc">Before, two terminal agents read and rewrite one shared Markdown file, causing a stale overwrite that loses about 128 lines. After, each agent writes its own claim or note record and a generated door view loses zero notes.</desc>
+  <defs>
+    <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#eef3fb"/>
+    </linearGradient>
+    <linearGradient id="bad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff7f7"/>
+      <stop offset="1" stop-color="#ffecef"/>
+    </linearGradient>
+    <linearGradient id="good" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f3fff8"/>
+      <stop offset="1" stop-color="#ebf6ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="9" stdDeviation="12" flood-color="#20304e" flood-opacity="0.13"/>
+    </filter>
+    <marker id="arrowBad" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#cf4358"/>
+    </marker>
+    <marker id="arrowGood" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0 0L10 5L0 10Z" fill="#168f58"/>
+    </marker>
+    <style>
+      .sans{font-family:"Segoe UI",Inter,system-ui,-apple-system,BlinkMacSystemFont,Arial,sans-serif}
+      .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+      .kicker{font-size:18px;font-weight:800;letter-spacing:3px}
+      .heading{font-size:34px;font-weight:800;fill:#17233c}
+      .body{font-size:20px;font-weight:550;fill:#52617a}
+      .small{font-size:16px;font-weight:600;fill:#637089}
+      .terminalTitle{font-size:18px;font-weight:750;fill:#dfe8fb}
+      .terminalLine{font-size:16px;font-weight:500;fill:#c4d0e6}
+      .fileTitle{font-size:18px;font-weight:800;fill:#17233c}
+      .fileLine{font-size:15px;font-weight:550;fill:#66748d}
+      .metric{font-size:34px;font-weight:850}
+      .label{font-size:15px;font-weight:800;letter-spacing:1.4px}
+    </style>
+  </defs>
+
+  <rect width="1600" height="840" rx="26" fill="url(#page)"/>
+  <text class="sans kicker" x="800" y="58" text-anchor="middle" fill="#3d6fe5">THE SAME CONCURRENT WORKLOAD</text>
+  <text class="sans heading" x="800" y="104" text-anchor="middle">Move authority out of the shared overview</text>
+
+  <g transform="translate(54 142)">
+    <rect width="718" height="626" rx="26" fill="url(#bad)" stroke="#efc5cc" stroke-width="2"/>
+    <text class="sans kicker" x="36" y="48" fill="#b7364c">BEFORE</text>
+    <text class="sans heading" x="36" y="91">One shared Markdown writer</text>
+    <text class="sans body" x="36" y="126">Both agents read, work, then rewrite the same file.</text>
+
+    <g transform="translate(36 162)" filter="url(#shadow)">
+      <rect width="278" height="132" rx="16" fill="#121a2d"/>
+      <rect width="278" height="34" rx="16" fill="#202b45"/>
+      <rect y="24" width="278" height="10" fill="#202b45"/>
+      <circle cx="18" cy="17" r="5" fill="#ff6b7a"/>
+      <circle cx="36" cy="17" r="5" fill="#f6c85f"/>
+      <circle cx="54" cy="17" r="5" fill="#43d17d"/>
+      <text class="sans terminalTitle" x="76" y="23">Terminal A</text>
+      <text class="mono terminalLine" x="18" y="62">read v18: 312 lines</text>
+      <text class="mono terminalLine" x="18" y="88">work: append 128 lines</text>
+      <text class="mono terminalLine" x="18" y="114" fill="#ff9dac">write v19: 440 lines</text>
+    </g>
+
+    <g transform="translate(404 162)" filter="url(#shadow)">
+      <rect width="278" height="132" rx="16" fill="#121a2d"/>
+      <rect width="278" height="34" rx="16" fill="#202b45"/>
+      <rect y="24" width="278" height="10" fill="#202b45"/>
+      <circle cx="18" cy="17" r="5" fill="#ff6b7a"/>
+      <circle cx="36" cy="17" r="5" fill="#f6c85f"/>
+      <circle cx="54" cy="17" r="5" fill="#43d17d"/>
+      <text class="sans terminalTitle" x="76" y="23">Terminal B</text>
+      <text class="mono terminalLine" x="18" y="62">read v18: 312 lines</text>
+      <text class="mono terminalLine" x="18" y="88">work on stale copy</text>
+      <text class="mono terminalLine" x="18" y="114" fill="#ff9dac">write v19: 312 lines</text>
+    </g>
+
+    <path d="M174 306C174 340 254 344 306 372" fill="none" stroke="#cf4358" stroke-width="4" marker-end="url(#arrowBad)"/>
+    <path d="M543 306C543 340 461 344 412 372" fill="none" stroke="#cf4358" stroke-width="4" marker-end="url(#arrowBad)"/>
+
+    <g transform="translate(156 366)" filter="url(#shadow)">
+      <rect width="406" height="136" rx="18" fill="#ffffff" stroke="#e2a8b2" stroke-width="2"/>
+      <rect width="406" height="36" rx="18" fill="#fff0f2"/>
+      <rect y="24" width="406" height="12" fill="#fff0f2"/>
+      <text class="sans label" x="203" y="24" text-anchor="middle" fill="#b7364c">SHARED MUTABLE STATE</text>
+      <text class="mono fileTitle" x="203" y="68" text-anchor="middle">shared-development-updates.md</text>
+      <text class="mono fileLine" x="203" y="94" text-anchor="middle">To-do.done.md</text>
+      <rect x="34" y="108" width="338" height="8" rx="4" fill="#f3c6ce"/>
+      <rect x="34" y="108" width="206" height="8" rx="4" fill="#cf4358"/>
+    </g>
+
+    <path d="M359 508V540" fill="none" stroke="#cf4358" stroke-width="4" marker-end="url(#arrowBad)"/>
+    <g transform="translate(180 544)">
+      <rect width="358" height="62" rx="31" fill="#b7364c"/>
+      <text class="sans metric" x="179" y="42" text-anchor="middle" fill="#ffffff">128 lines lost</text>
+    </g>
+  </g>
+
+  <g transform="translate(828 142)">
+    <rect width="718" height="626" rx="26" fill="url(#good)" stroke="#b8dfcb" stroke-width="2"/>
+    <text class="sans kicker" x="36" y="48" fill="#107c4b">AFTER</text>
+    <text class="sans heading" x="36" y="91">Sharded notes, generated overview</text>
+    <text class="sans body" x="36" y="126">Each participant owns a record. The board is rebuilt.</text>
+
+    <g transform="translate(34 164)" filter="url(#shadow)">
+      <rect width="204" height="118" rx="16" fill="#ffffff" stroke="#9fcab2"/>
+      <circle cx="24" cy="24" r="9" fill="#5b8cff"/>
+      <text class="sans label" x="44" y="29" fill="#3d6fe5">CLAIM</text>
+      <text class="sans fileTitle" x="20" y="62">review-claude</text>
+      <text class="mono fileLine" x="20" y="87">src/api/**</text>
+      <text class="mono small" x="20" y="107">clm_A.json</text>
+    </g>
+
+    <g transform="translate(258 164)" filter="url(#shadow)">
+      <rect width="204" height="118" rx="16" fill="#ffffff" stroke="#9fcab2"/>
+      <circle cx="24" cy="24" r="9" fill="#9a75e8"/>
+      <text class="sans label" x="44" y="29" fill="#7753c6">CLAIM</text>
+      <text class="sans fileTitle" x="20" y="62">build-codex</text>
+      <text class="mono fileLine" x="20" y="87">src/db/**</text>
+      <text class="mono small" x="20" y="107">clm_B.json</text>
+    </g>
+
+    <g transform="translate(482 164)" filter="url(#shadow)">
+      <rect width="202" height="118" rx="16" fill="#fff9dd" stroke="#d8c46f"/>
+      <circle cx="24" cy="24" r="9" fill="#f2bd3f"/>
+      <text class="sans label" x="44" y="29" fill="#9a7110">PIN</text>
+      <text class="sans fileTitle" x="20" y="62">release-pi</text>
+      <text class="sans fileLine" x="20" y="87">Docs ready</text>
+      <text class="mono small" x="20" y="107">evt_C.json</text>
+    </g>
+
+    <g fill="none" stroke="#168f58" stroke-width="4" marker-end="url(#arrowGood)">
+      <path d="M136 294C136 338 240 342 292 374"/>
+      <path d="M360 294V360"/>
+      <path d="M582 294C582 338 478 342 427 374"/>
+    </g>
+
+    <g transform="translate(166 366)" filter="url(#shadow)">
+      <rect width="386" height="144" rx="19" fill="#12213a" stroke="#5a78aa" stroke-width="2"/>
+      <rect width="386" height="38" rx="19" fill="#1b3154"/>
+      <rect y="26" width="386" height="12" fill="#1b3154"/>
+      <circle cx="28" cy="19" r="8" fill="#43d17d"/>
+      <text class="sans label" x="48" y="24" fill="#86efad">DERIVED OVERVIEW</text>
+      <text class="mono" x="193" y="77" text-anchor="middle" font-size="25" font-weight="800" fill="#ffffff">.fridge/DOOR.md</text>
+      <text class="sans" x="193" y="106" text-anchor="middle" font-size="17" font-weight="650" fill="#b8c8e4">Generated from authoritative records</text>
+      <text class="sans" x="193" y="130" text-anchor="middle" font-size="15" font-weight="650" fill="#83a5d5">Delete it, then render it again</text>
+    </g>
+
+    <path d="M359 518V540" fill="none" stroke="#168f58" stroke-width="4" marker-end="url(#arrowGood)"/>
+    <g transform="translate(180 544)">
+      <rect width="358" height="62" rx="31" fill="#107c4b"/>
+      <text class="sans metric" x="179" y="42" text-anchor="middle" fill="#ffffff">0 notes lost</text>
+    </g>
+  </g>
+
+  <g transform="translate(300 786)">
+    <rect width="1000" height="38" rx="19" fill="#17233c"/>
+    <text class="sans" x="500" y="25" text-anchor="middle" font-size="17" font-weight="700" fill="#edf4ff">The fix is structural: one writer per record, then generate the human view.</text>
+  </g>
+</svg>
