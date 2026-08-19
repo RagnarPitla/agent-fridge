@@ -3,7 +3,7 @@
 export const PRODUCT = 'Agent Fridge';
 export const PACKAGE = 'agent-fridge';
 export const BIN = 'fridge';
-export const VERSION = '0.2.0';
+export const VERSION = '0.2.1';
 export const PROTOCOL = 'wcp/0.1';
 export const STATE_DIR = '.fridge';
 export const WRITER = `${PACKAGE}/${VERSION}`;

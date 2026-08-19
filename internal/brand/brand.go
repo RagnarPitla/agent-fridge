@@ -8,7 +8,7 @@ const (
 	Product  = "Agent Fridge"
 	Package  = "agent-fridge"
 	Bin      = "fridge"
-	Version  = "0.2.0"
+	Version  = "0.2.1"
 	Protocol = "wcp/0.1"
 	StateDir = ".fridge"
 	Writer   = Package + "/" + Version

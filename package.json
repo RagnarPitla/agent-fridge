@@ -1,6 +1,6 @@
 {
   "name": "agent-fridge",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "A fridge door for your repo. Multiple AI agents and humans work in one Git checkout without overwriting each other. Local-first, zero dependencies, model-neutral.",
   "keywords": [
     "ai-agents",

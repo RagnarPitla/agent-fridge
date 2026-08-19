@@ -7,7 +7,7 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Two version numbers matter and they move independently:
 
-- the **CLI version** (`0.2.0`), which is what the tags and the release binaries track, and
+- the **CLI version** (`0.2.1`), which is what the tags and the release binaries track, and
 - the **protocol version** (`wcp/0.1`), which is what `.fridge/` records declare.
 
 A CLI release that does not change the protocol leaves `wcp/0.1` alone.
@@ -15,6 +15,12 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
 ---
 
 ## [Unreleased]
+
+Nothing yet.
+
+---
+
+## [0.2.1] - 2026-08-19
 
 ### Fixed
 

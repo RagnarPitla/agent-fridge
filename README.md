@@ -133,7 +133,7 @@ on your `PATH`. Six builds are published for every release:
 Every asset has a matching `.sha256`, and `checksums.txt` covers the set.
 
 Both installers verify the checksum before installing, and both take
-`--dir <path>` to choose where the binary lands and `--version v0.2.0` to pin a
+`--dir <path>` to choose where the binary lands and `--version v0.2.1` to pin a
 release. With no arguments they use `/usr/local/bin` when it is writable and
 `~/.local/bin` otherwise.
 
@@ -164,7 +164,7 @@ vendoring the tool into a JavaScript monorepo. See
 
 ```bash
 fridge version
-# agent-fridge 0.2.0 (protocol wcp/0.1)
+# agent-fridge 0.2.1 (protocol wcp/0.1)
 
 fridge conform
 # Result: CONFORMANT. 62 case(s) passed.

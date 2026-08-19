@@ -1,6 +1,6 @@
 ---
 name: agent-fridge
-version: 0.2.0
+version: 0.2.1
 protocol: wcp/0.1
 license: Apache-2.0
 homepage: https://github.com/RagnarPitla/agent-fridge
