@@ -93,8 +93,9 @@ regression test in both implementations.
   `status.json`.
 - **`fridge run` could not find `npm` on Windows.** Executables are resolved
   through `PATHEXT` before spawning. `.cmd` and `.bat` targets run through
-  `cmd.exe`; native targets do not. A missing command has an explicit diagnostic
-  and exit 127.
+  `cmd.exe`; native targets do not. Bare commands search `PATH` without giving
+  a same-named file in the shared checkout priority; explicit relative paths
+  remain supported. A missing command has an explicit diagnostic and exit 127.
 - **`fridge run` could recreate a lease after release.** Shutdown now stops new
   heartbeats and waits for any heartbeat already in flight before taking down
   the card.

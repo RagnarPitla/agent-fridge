@@ -1369,10 +1369,33 @@ func resolveRunTarget(command, cwd string) (string, bool) {
 		}
 		return target, false
 	}
-	if resolved, err := exec.LookPath(command); err == nil {
+	if resolved, ok := resolveWindowsBare(command, filepath.SplitList(os.Getenv("PATH")), windowsPathExt()); ok {
 		return resolved, isBatch(resolved)
 	}
 	return command, false
+}
+
+func resolveWindowsBare(command string, dirs, exts []string) (string, bool) {
+	names := []string{command}
+	if filepath.Ext(command) == "" {
+		names = names[:0]
+		for _, ext := range exts {
+			names = append(names, command+ext)
+		}
+	}
+	for _, dir := range dirs {
+		dir = strings.Trim(strings.TrimSpace(dir), `"`)
+		if dir == "" {
+			continue
+		}
+		for _, name := range names {
+			candidate := filepath.Join(dir, name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate, true
+			}
+		}
+	}
+	return "", false
 }
 
 func windowsPathExt() []string {

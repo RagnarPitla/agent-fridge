@@ -64,3 +64,36 @@ func TestRunWaitsForInFlightHeartbeatBeforeRelease(t *testing.T) {
 		t.Fatalf("an in-flight heartbeat recreated %d leases after release", len(got))
 	}
 }
+
+func TestWindowsBareCommandSearchUsesOnlyPathDirectories(t *testing.T) {
+	root := t.TempDir()
+	checkout := filepath.Join(root, "checkout")
+	trusted := filepath.Join(root, "trusted")
+	if err := os.MkdirAll(checkout, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(trusted, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	shadow := filepath.Join(checkout, "fridge-path-probe.cmd")
+	expected := filepath.Join(trusted, "fridge-path-probe.cmd")
+	if err := os.WriteFile(shadow, []byte("exit /b 23\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(expected, []byte("exit /b 0\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(checkout); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(previous) })
+
+	got, ok := resolveWindowsBare("fridge-path-probe", []string{trusted}, []string{".cmd"})
+	if !ok || got != expected {
+		t.Fatalf("resolved %q, %v; want PATH target %q", got, ok, expected)
+	}
+}
