@@ -5,11 +5,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
-import { bootstrap, cleanup, fridge, notes, noteFiles } from '../helpers.mjs';
+import { spawn, spawnSync } from 'node:child_process';
+import { bootstrap, cleanup, fridge, notes, noteFiles, CLI } from '../helpers.mjs';
 import { scopesOverlap, patternsCanIntersect, patternCovers, resolveInsideWorkspace } from '../../src/core/paths.mjs';
-import { gitignoreFor } from '../../src/core/store.mjs';
+import { gitignoreFor, openWorkspace } from '../../src/core/store.mjs';
 import { guardSecrets, looksSecret } from '../../src/core/secrets.mjs';
+import { createExclusive, seams as fsxSeams } from '../../src/core/fsx.mjs';
+import { autoRender, doorDrift, renderDoorFrom, seams as renderSeams, snapshot } from '../../src/core/render.mjs';
+import { withMutex } from '../../src/core/mutex.mjs';
 
 const claimId = (r) => r.json?.data?.claimId;
 const cards = (root, actor) => fridge(root, ['status', '--json'], { actor }).json.data.claims;
@@ -23,6 +26,9 @@ test('overlap is decided on patterns, so a file that does not exist yet is still
     ['src/*.ts', 'src/a?.ts'],
     ['{src,docs}/**', 'docs/guide.md'],
     ['src/[ab]/x.ts', 'src/[bc]/x.ts'],
+    ['[a-z].md', 'b.md'],
+    ['[a-m].md', '[h-z].md'],
+    ['[!a-z].md', '7.md'],
   ];
   for (const [a, b] of pairs) {
     const o = scopesOverlap({ include: [a], exclude: [] }, { include: [b], exclude: [] });
@@ -36,6 +42,9 @@ test('genuinely disjoint patterns are still allowed to proceed in parallel', () 
     ['src/api/*.ts', 'src/api/*.js'],
     ['src/**', 'docs/**'],
     ['src/[ab]/x.ts', 'src/[cd]/x.ts'],
+    ['[a-f].md', '[x-z].md'],
+    ['[!a-z].md', 'b.md'],
+    ['[a-z].md', '[!a-z].md'],
     ['README.md', 'src/**'],
     ['*.ts', 'src/**'],
   ];
@@ -100,6 +109,44 @@ test('a read-only command may still guess the sole actor', () => {
   } finally { cleanup(root); }
 });
 
+test('sole-actor inference never renews leases or creates a misspelled actor', () => {
+  const root = bootstrap('h-ident-read-only', ['alice']);
+  try {
+    const typo = fridge(root, ['status', '--agent', 'alcie', '--json']);
+    assert.equal(typo.code, 7);
+    assert.equal(fs.existsSync(path.join(root, '.fridge', 'actors', 'alcie.json')), false, 'a read typo silently joined');
+
+    const held = fridge(root, ['claim', 'src/**', '--task', 'near expiry', '--json'], { actor: 'alice' });
+    const leaseFile = path.join(root, '.fridge', 'leases', `${claimId(held)}.json`);
+    const lease = JSON.parse(fs.readFileSync(leaseFile, 'utf8'));
+    lease.expiresAt = new Date(Date.now() + 5000).toISOString();
+    lease.renewals = 0;
+    fs.writeFileSync(leaseFile, JSON.stringify(lease, null, 2));
+    const before = fs.readFileSync(leaseFile, 'utf8');
+    assert.equal(fridge(root, ['status', '--json']).code, 0);
+    assert.equal(fs.readFileSync(leaseFile, 'utf8'), before, 'inferred read-only identity renewed a lease');
+  } finally { cleanup(root); }
+});
+
+test('a stale environment identity does not block identity-free administration', () => {
+  const root = bootstrap('h-ident-stale-env', ['alice']);
+  try {
+    for (const args of [
+      ['status', '--json'],
+      ['board', '--json'],
+      ['config', '--json'],
+      ['doctor', '--check', '--json'],
+    ]) {
+      const result = fridge(root, args, { actor: 'departed' });
+      assert.equal(result.code, 0, `${args[0]} was blocked by a stale FRIDGE_ACTOR: ${result.stdout || result.stderr}`);
+    }
+    const held = claimId(fridge(root, ['claim', 'src/**', '--task', 'held', '--json'], { actor: 'alice' }));
+    assert.equal(fridge(root, ['reap', '--dry-run', '--json'], { actor: 'departed' }).code, 0);
+    assert.equal(fridge(root, ['wait', held, '--timeout', '1ms', '--json'], { actor: 'departed' }).code, 21);
+    assert.equal(fridge(root, ['reap', '--dry-run', '--agent', 'departed', '--json']).code, 7);
+  } finally { cleanup(root); }
+});
+
 // ---------------------------------------------------------------- 5. corruption
 
 test('an unreadable card blocks a new claim instead of looking like free space', () => {
@@ -122,6 +169,25 @@ test('the board still reads, but says loudly that it is incomplete', () => {
     assert.equal(r.code, 0);
     assert.match(r.stdout, /unreadable/i, 'a corrupt card is never silently dropped from the view');
     assert.equal(fridge(root, ['doctor', '--check'], { actor: 'alice' }).code, 30);
+  } finally { cleanup(root); }
+});
+
+test('corrupt claims block lease and ownership mutations', () => {
+  const root = bootstrap('h-corrupt-mutations', ['alice']);
+  try {
+    const id = claimId(fridge(root, ['claim', 'src/**', '--task', 'x', '--json'], { actor: 'alice' }));
+    const file = path.join(root, '.fridge', 'claims', `${id}.json`);
+    fs.writeFileSync(file, '{"schema":"wcp/0.1/claim", trunc');
+    for (const args of [
+      ['heartbeat', '--json'],
+      ['release', '--all', '--json'],
+      ['reap', '--dry-run', '--json'],
+    ]) {
+      const result = fridge(root, args, { actor: 'alice' });
+      assert.equal(result.code, 5, `${args[0]} ignored a corrupt claim`);
+      assert.equal(result.json.error.code, 'E_STATE_CORRUPT');
+    }
+    assert.equal(fs.existsSync(path.join(root, '.fridge', 'leases', `${id}.json`)), true, 'a failed mutation changed lease state');
   } finally { cleanup(root); }
 });
 
@@ -214,13 +280,22 @@ test('releasing your own card is recorded as released', () => {
 test('a note is never visible at its final path before it is complete', () => {
   const root = bootstrap('h-atomic', ['alice']);
   try {
-    fridge(root, ['pin', 'a durable finding about the parser', '--json'], { actor: 'alice' });
-    for (const f of noteFiles(root)) {
-      const raw = fs.readFileSync(f, 'utf8');
-      assert.notEqual(raw.length, 0, `${f} was published empty`);
-      assert.doesNotThrow(() => JSON.parse(raw), `${f} was published half-written`);
-    }
-  } finally { cleanup(root); }
+    const finalPath = path.join(root, '.fridge', 'notes', 'atomic.json');
+    const complete = JSON.stringify({ schema: 'wcp/0.1/note', summary: 'complete before publish' });
+    let observed = false;
+    fsxSeams.beforeExclusivePublish = (tmp, final) => {
+      observed = true;
+      assert.equal(final, finalPath);
+      assert.equal(fs.existsSync(final), false, 'the final name existed before publication');
+      assert.equal(fs.readFileSync(tmp, 'utf8'), complete, 'the staged note was not complete');
+    };
+    createExclusive(finalPath, complete, path.join(root, '.fridge', 'tmp'));
+    assert.equal(observed, true, 'the pre-publication seam was not reached');
+    assert.equal(fs.readFileSync(finalPath, 'utf8'), complete);
+  } finally {
+    fsxSeams.beforeExclusivePublish = () => {};
+    cleanup(root);
+  }
 });
 
 // ---------------------------------------------------------------- 8. paths
@@ -234,6 +309,48 @@ test('a generated view cannot be written outside the workspace', () => {
       assert.equal(r.json.error.code, 'E_PATH_INVALID');
     }
     assert.equal(fs.existsSync(path.join(root, '..', 'escaped.md')), false);
+  } finally { cleanup(root); }
+});
+
+test('door.path is confined to the workspace and drives automatic rendering', () => {
+  const root = bootstrap('h-door-path', ['alice']);
+  try {
+    const escaped = fridge(root, ['config', 'door.path', '../escaped-door.md', '--json'], { actor: 'alice' });
+    assert.equal(escaped.code, 40);
+    assert.equal(escaped.json.error.code, 'E_PATH_INVALID');
+    assert.match(escaped.json.error.message, /door\.path/);
+    assert.doesNotMatch(escaped.json.error.message, /\[object Object\]/);
+
+    assert.equal(fridge(root, ['config', 'door.path', 'docs/AGENT-FRIDGE.md', '--json'], { actor: 'alice' }).code, 0);
+    fs.rmSync(path.join(root, '.fridge', 'DOOR.md'), { force: true });
+    assert.equal(fridge(root, ['pin', 'render the configured door', '--json'], { actor: 'alice' }).code, 0);
+    assert.equal(fs.existsSync(path.join(root, 'docs', 'AGENT-FRIDGE.md')), true);
+    assert.equal(fs.existsSync(path.join(root, '.fridge', 'DOOR.md')), false, 'auto-render ignored door.path');
+  } finally { cleanup(root); }
+});
+
+test('malformed door configuration is rejected before it can redirect a view', () => {
+  const root = bootstrap('h-door-shape', ['alice']);
+  const configPath = path.join(root, '.fridge', 'config.json');
+  try {
+    const original = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    for (const door of [
+      { ...original.door, path: 42 },
+      { ...original.door, path: '' },
+      { ...original.door, extraTargets: 'docs/door.md' },
+      { ...original.door, extraTargets: ['docs/door.md', 42] },
+    ]) {
+      fs.writeFileSync(configPath, `${JSON.stringify({ ...original, door }, null, 2)}\n`);
+      const result = fridge(root, ['status', '--json'], { actor: 'alice' });
+      assert.equal(result.code, 5);
+      assert.equal(result.json.error.code, 'E_STATE_CORRUPT');
+    }
+    fs.writeFileSync(configPath, `${JSON.stringify(original, null, 2)}\n`);
+    const invalid = fridge(root, ['config', 'door.extraTargets', 'docs/door.md', '--json'], { actor: 'alice' });
+    assert.equal(invalid.code, 2);
+    assert.equal(invalid.json.error.code, 'E_USAGE');
+    assert.equal(fridge(root, ['config', 'door.extraTargets', '["docs/door.md"]', '--json'], { actor: 'alice' }).code, 0);
+    assert.deepEqual(JSON.parse(fs.readFileSync(configPath, 'utf8')).door.extraTargets, ['docs/door.md']);
   } finally { cleanup(root); }
 });
 
@@ -300,6 +417,116 @@ test('the escape hatch still works and names the offending flag', () => {
   assert.throws(() => guardSecrets({ '--task': token }), (e) => e.details.field === '--task');
 });
 
+test('migration is explicit, confined, and secret-scanned before it writes', () => {
+  const root = bootstrap('h-migrate-safety', ['alice']);
+  const legacy = path.join(root, 'shared-development-updates.md');
+  const outside = path.join(root, '..', `outside-ledger-${process.pid}.md`);
+  try {
+    fs.writeFileSync(legacy, '- ghp_abcdefghijklmnopqrstuvwxyz1234567890\n');
+    fs.writeFileSync(outside, '- harmless outside line\n');
+    const before = notes(root).length;
+
+    const inferredWrite = fridge(root, ['migrate', '--updates', 'shared-development-updates.md', '--json']);
+    assert.equal(inferredWrite.code, 7, 'a non-dry migration inherited the sole actor');
+    assert.equal(notes(root).length, before);
+
+    const dry = fridge(root, ['migrate', '--updates', 'shared-development-updates.md', '--dry-run', '--json']);
+    assert.equal(dry.code, 2, 'dry-run did not report the secret that blocks import');
+    assert.equal(notes(root).length, before);
+
+    const secret = fridge(root, ['migrate', '--updates', 'shared-development-updates.md', '--freeze', '--json'], { actor: 'alice' });
+    assert.equal(secret.code, 2);
+    assert.equal(secret.json.error.code, 'E_USAGE');
+    assert.equal(notes(root).length, before, 'migration wrote notes before validation finished');
+    assert.doesNotMatch(fs.readFileSync(legacy, 'utf8'), /^<!-- FROZEN/, 'migration froze the source before validation passed');
+
+    const escaped = fridge(root, ['migrate', '--updates', `../${path.basename(outside)}`, '--json'], { actor: 'alice' });
+    assert.equal(escaped.code, 40);
+    assert.equal(escaped.json.error.code, 'E_PATH_INVALID');
+
+    const emptyDone = path.join(root, 'To-do.done.md');
+    fs.writeFileSync(emptyDone, '');
+    const preview = fridge(root, [
+      'migrate',
+      '--updates', 'shared-development-updates.md',
+      '--todo-done', 'To-do.done.md',
+      '--allow-secret-like',
+      '--dry-run',
+      '--json',
+    ], { actor: 'alice' });
+    assert.equal(preview.code, 0);
+    assert.deepEqual(
+      preview.json.data.files.sort(),
+      ['To-do.done.md', 'shared-development-updates.md'],
+      'zero-entry migration sources must still appear in the report',
+    );
+
+    const allowed = fridge(root, [
+      'migrate', '--updates', 'shared-development-updates.md', '--allow-secret-like', '--json',
+    ], { actor: 'alice' });
+    assert.equal(allowed.code, 0);
+    assert.equal(notes(root).filter((n) => n.type === 'legacy.update').length, 1);
+  } finally {
+    fs.rmSync(outside, { force: true });
+    cleanup(root);
+  }
+});
+
+test('migration refuses to freeze a source that changed after preflight', async () => {
+  const root = bootstrap('h-migrate-edited', ['alice']);
+  const legacy = path.join(root, 'shared-development-updates.md');
+  const marker = path.join(root, '.fridge', 'tmp', 'migrate-preflight-ready');
+  const proceed = path.join(root, '.fridge', 'tmp', 'migrate-preflight-continue');
+  try {
+    fs.writeFileSync(legacy, '- original entry\n');
+    const before = notes(root).length;
+    const child = spawn(process.execPath, [
+      CLI, 'migrate', '--updates', 'shared-development-updates.md', '--freeze', '--json',
+    ], {
+      cwd: root,
+      env: {
+        ...process.env,
+        FRIDGE_ACTOR: 'alice',
+        FRIDGE_TEST: '1',
+        FRIDGE_FAULT: 'delay-migrate-after-preflight',
+        NO_COLOR: '1',
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = ''; let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    const deadline = Date.now() + 5000;
+    while (!fs.existsSync(marker) && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    if (!fs.existsSync(marker)) {
+      child.kill();
+      assert.fail(`migration never reached its preflight seam: ${stdout || stderr}`);
+    }
+    fs.appendFileSync(legacy, '- concurrent edit\n');
+    fs.writeFileSync(proceed, 'continue\n');
+    const code = await new Promise((resolve) => child.on('close', resolve));
+    assert.equal(code, 10, stdout || stderr);
+    const current = fs.readFileSync(legacy, 'utf8');
+    assert.match(current, /concurrent edit/);
+    assert.doesNotMatch(current, /^<!-- FROZEN/);
+    assert.equal(notes(root).length, before, 'migration wrote notes before detecting the changed source');
+  } finally { cleanup(root); }
+});
+
+test('migration rejects a source larger than its bounded mutex budget', () => {
+  const root = bootstrap('h-migrate-size', ['alice']);
+  try {
+    const legacy = path.join(root, 'shared-development-updates.md');
+    fs.writeFileSync(legacy, '');
+    fs.truncateSync(legacy, 10 * 1024 * 1024 + 1);
+    const result = fridge(root, ['migrate', '--updates', 'shared-development-updates.md', '--dry-run', '--json']);
+    assert.equal(result.code, 2);
+    assert.match(result.json.error.message, /10 MiB/);
+  } finally { cleanup(root); }
+});
+
 // ---------------------------------------------------------------- 10. lost updates
 
 test('two config writes from two processes both survive', () => {
@@ -326,6 +553,23 @@ test('renewal is centralised, so a command that never renewed before does now', 
     fridge(root, ['inbox', '--json'], { actor: 'alice' });
     const after = JSON.parse(fs.readFileSync(path.join(root, '.fridge', 'leases', `${id}.json`), 'utf8'));
     assert.ok(after.renewals > before.renewals, 'inbox did not renew the lease it should have');
+  } finally { cleanup(root); }
+});
+
+test('run waits for an in-flight heartbeat before releasing its card', () => {
+  const root = bootstrap('h-run-heartbeat', ['alice']);
+  try {
+    const result = fridge(root, [
+      'run', '--claim', 'src/**', '--task', 'heartbeat shutdown', '--ttl', '3s',
+      '--', process.execPath, '-e', 'setTimeout(() => {}, 1100)',
+    ], {
+      actor: 'alice',
+      env: { FRIDGE_TEST: '1', FRIDGE_FAULT: 'delay-run-heartbeat' },
+    });
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(fs.existsSync(path.join(root, '.fridge', 'tmp', 'run-heartbeat-entered')), true, 'the regression seam never ran');
+    assert.deepEqual(fs.readdirSync(path.join(root, '.fridge', 'claims')).filter((f) => f.endsWith('.json')), []);
+    assert.deepEqual(fs.readdirSync(path.join(root, '.fridge', 'leases')).filter((f) => f.endsWith('.json')), []);
   } finally { cleanup(root); }
 });
 
@@ -383,13 +627,108 @@ test('the door body and its state stamp always describe the same instant', () =>
   try {
     fridge(root, ['config', 'door.autoRender', 'false'], { actor: 'alice' });
     fridge(root, ['claim', 'src/**', '--task', 'x', '--json'], { actor: 'alice' });
-    fridge(root, ['render', '--json'], { actor: 'alice' });
-    assert.equal(fridge(root, ['render', '--check', '--json'], { actor: 'alice' }).code, 0);
+    const ws = openWorkspace({ repo: root, cwd: root });
+    const captured = snapshot(ws);
     fridge(root, ['claim', 'docs/**', '--task', 'y', '--json'], { actor: 'alice' });
-    assert.equal(fridge(root, ['render', '--check', '--json'], { actor: 'alice' }).code, 30, 'drift must be visible');
+    const oldDoor = renderDoorFrom(captured);
+    assert.doesNotMatch(oldDoor, /docs\/\*\*/, 'the injected mutation leaked into the old snapshot');
+    assert.equal(doorDrift(ws, oldDoor).drift, true, 'an old snapshot was certified as current');
     fridge(root, ['render', '--json'], { actor: 'alice' });
     const door = fs.readFileSync(path.join(root, '.fridge', 'DOOR.md'), 'utf8');
     assert.match(door, /docs\/\*\*/, 'the body caught up');
     assert.equal(fridge(root, ['render', '--check', '--json'], { actor: 'alice' }).code, 0, 'and so did the stamp');
+  } finally { cleanup(root); }
+});
+
+test('auto-render reports failure when state never converges', () => {
+  const root = bootstrap('h-render-convergence', ['alice']);
+  try {
+    const ws = openWorkspace({ repo: root, cwd: root });
+    renderSeams.afterAutoWrite = (current, attempt) => {
+      fs.writeFileSync(path.join(current.paths.queue, `render-race-${attempt}.json`), '{}\n');
+    };
+    assert.equal(autoRender(ws), false);
+    const door = fs.readFileSync(ws.paths.door, 'utf8');
+    assert.equal(doorDrift(ws, door).drift, true, 'a non-converged render claimed success');
+  } finally {
+    renderSeams.afterAutoWrite = () => {};
+    cleanup(root);
+  }
+});
+
+test('a broken old holder cannot remove its replacement lock', async () => {
+  const root = bootstrap('h-replacement-lock', ['alice']);
+  const marker = path.join(root, 'old-holder-ready');
+  try {
+    fridge(root, ['config', 'mutex.staleMs', '40'], { actor: 'alice' });
+    fridge(root, ['config', 'mutex.acquireTimeoutMs', '1500'], { actor: 'alice' });
+    const storeUrl = new URL('../../src/core/store.mjs', import.meta.url).href;
+    const mutexUrl = new URL('../../src/core/mutex.mjs', import.meta.url).href;
+    const code = `
+      import fs from 'node:fs';
+      import { openWorkspace } from ${JSON.stringify(storeUrl)};
+      import { withMutex } from ${JSON.stringify(mutexUrl)};
+      const [root, marker] = process.argv.slice(1);
+      const ws = openWorkspace({ repo: root, cwd: root });
+      await withMutex(ws, 'old-holder', async () => {
+        fs.writeFileSync(marker, 'ready');
+        await new Promise((resolve) => setTimeout(resolve, 180));
+      });
+    `;
+    const child = spawn(process.execPath, ['--input-type=module', '-e', code, root, marker], {
+      cwd: root,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    const exited = new Promise((resolve, reject) => {
+      let stderr = '';
+      child.stderr.on('data', (chunk) => { stderr += chunk; });
+      child.on('error', reject);
+      child.on('close', (exitCode) => exitCode === 0 ? resolve() : reject(new Error(stderr || `old holder exited ${exitCode}`)));
+    });
+    for (let i = 0; i < 100 && !fs.existsSync(marker); i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(fs.existsSync(marker), true, 'old holder never acquired the lock');
+
+    const ws = openWorkspace({ repo: root, cwd: root });
+    await withMutex(ws, 'replacement', async () => {
+      await new Promise((resolve) => setTimeout(resolve, 240));
+      const owner = JSON.parse(fs.readFileSync(path.join(root, '.fridge', 'locks', 'registry.lock.d', 'owner.json'), 'utf8'));
+      assert.equal(owner.op, 'replacement', 'the old holder removed the replacement generation');
+    });
+    await exited;
+  } finally { cleanup(root); }
+});
+
+test('a renewable mutex is not broken while a long bounded operation is still active', async () => {
+  const root = bootstrap('h-mutex-renew', ['alice']);
+  try {
+    const ws = openWorkspace({ repo: root, cwd: root });
+    ws.config.mutex.staleMs = 500;
+    ws.config.mutex.acquireTimeoutMs = 2000;
+    let firstDone = false;
+    let secondEnteredEarly = false;
+    let requestRefresh;
+    const refreshRequested = new Promise((resolve) => { requestRefresh = resolve; });
+    let markRefreshed;
+    const refreshed = new Promise((resolve) => { markRefreshed = resolve; });
+    let releaseFirst;
+    const mayRelease = new Promise((resolve) => { releaseFirst = resolve; });
+    const first = withMutex(ws, 'renewable-holder', async (refresh) => {
+      await refreshRequested;
+      refresh();
+      markRefreshed();
+      await mayRelease;
+      firstDone = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    requestRefresh();
+    await refreshed;
+    setTimeout(releaseFirst, 100);
+    const second = withMutex(ws, 'contender', () => {
+      secondEnteredEarly = !firstDone;
+    });
+    await Promise.all([first, second]);
+    assert.equal(secondEnteredEarly, false, 'a live holder was replaced after staleMs despite refreshing');
   } finally { cleanup(root); }
 });

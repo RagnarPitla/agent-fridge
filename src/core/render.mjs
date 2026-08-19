@@ -5,6 +5,10 @@ import { listClaims, readNotes } from './store.mjs';
 import { listJson, writeAtomic } from './fsx.mjs';
 import { PACKAGE, VERSION } from '../brand.mjs';
 
+export const seams = {
+  afterAutoWrite: () => {},
+};
+
 const pad = (s, n) => String(s).padEnd(n);
 const cut = (s, n) => (String(s).length > n ? String(s).slice(0, n - 1) + '~' : String(s));
 
@@ -134,8 +138,13 @@ export function renderStatusText(ws, { mine = null, wide = false } = {}) {
 export function autoRender(ws) {
   if (!ws.config?.door?.autoRender) return false;
   try {
-    writeAtomic(ws.paths.door, renderDoor(ws), ws.paths.tmp);
-    return true;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const captured = snapshot(ws);
+      writeAtomic(ws.paths.door, renderDoorFrom(captured), ws.paths.tmp);
+      seams.afterAutoWrite(ws, attempt);
+      if (stateKey(ws) === stateKeyOf(captured)) return true;
+    }
+    return false;
   } catch {
     return false; // a stale view must never fail a real operation
   }

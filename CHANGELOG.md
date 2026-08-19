@@ -7,7 +7,7 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Two version numbers matter and they move independently:
 
-- the **CLI version** (`0.2.1`), which is what the tags and the release binaries track, and
+- the **CLI version** (`0.2.2`), which is what the tags and the release binaries track, and
 - the **protocol version** (`wcp/0.1`), which is what `.fridge/` records declare.
 
 A CLI release that does not change the protocol leaves `wcp/0.1` alone.
@@ -15,6 +15,8 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
 ---
 
 ## [Unreleased]
+
+## [0.2.2] - 2026-08-19
 
 ### Fixed
 
@@ -29,17 +31,28 @@ regression test in both implementations.
   `*b/x.ts`. Overlap is now decided on the patterns themselves: the supported
   glob subset is regular, so "can these both match some string" is decided
   rather than approximated. Brace expansion is bounded at 256 alternatives and
-  exceeding it is an explicit error, never a silent truncation.
+  exceeding it is an explicit error, never a silent truncation or an allocated
+  expansion bomb. Inclusive and negated character ranges now participate in the
+  same exact intersection decision, so `[a-z].md` conflicts with `b.md`.
+  Case-insensitive ranges and Unicode simple-fold equivalents now agree across
+  Node and Go, including Kelvin/Angstrom symbols and the two lowercase sigma
+  forms.
 - **Identity could be inherited.** A mutating command with no `FRIDGE_ACTOR`
   and exactly one actor in the workspace silently ran *as* that actor, so a
   second terminal shared the first one's claims. Reads may still guess the
-  sole actor; writes now refuse with `E_NO_SESSION` and name the candidate.
+  sole actor; writes now refuse with `E_NO_SESSION` and name the candidate. A
+  stale `FRIDGE_ACTOR` no longer blocks identity-free administration such as
+  `doctor`, `reap --dry-run`, or an unattributed `wait`; an explicit misspelled
+  `--agent` still fails.
 - **A broken lock holder could delete its replacement.** Release removed the
   lock directory without proving it still owned it, so a holder that had been
   judged stale and broken would, on exit, delete the *new* holder's lock. Each
   acquisition now writes a fencing nonce into `owner.json`, and release only
   removes a lock that still carries its own nonce, checked under the break
-  lock so the answer cannot go stale between reading and acting.
+  lock so the answer cannot go stale between reading and acting. Bounded batch
+  operations can also refresh a generation-fenced `heartbeatAt`; migration
+  uses it between note writes so a long live import is never broken merely for
+  exceeding `staleMs`.
 - **Corrupt records failed open.** An unparseable claim was skipped, which made
   a damaged file look like free space. Reads that feed a mutation or an overlap
   decision now fail with `E_STATE_CORRUPT`; generated views still render, but
@@ -63,10 +76,14 @@ regression test in both implementations.
   documented escape hatch.
 - **Lost updates.** `session` was read before the mutex and written back inside
   it, and `fridge config` did an unlocked read-modify-write of the whole file.
-  Both now read and write inside one critical section.
+  Both now read and write fresh state inside one critical section. Real
+  multi-process races cover concurrent config keys, same-session claim tokens,
+  and heartbeat renewal counters.
 - **Lease renewal did not match its own documentation.**
   `lease.renewOnAnyCommand` was hand-wired into four commands. Renewal now
-  happens once, centrally, for every command that resolves an actor.
+  happens once, centrally, only for explicit `--agent` or `FRIDGE_ACTOR`
+  identity, under the registry mutex. Sole-actor read inference never extends
+  ownership.
 - **`notes.commit: false` did not keep notes out of Git.** The `.gitignore` was
   a constant that always un-ignored `/notes/`. It is generated from the setting,
   and `fridge doctor` reports and repairs drift between the two.
@@ -75,8 +92,26 @@ regression test in both implementations.
   that was never rendered. One snapshot now feeds the body, the stamp and
   `status.json`.
 - **`fridge run` could not find `npm` on Windows.** Executables are resolved
-  through `PATHEXT` before spawning, with an explicit diagnostic when the
-  binary genuinely is not there.
+  through `PATHEXT` before spawning. `.cmd` and `.bat` targets run through
+  `cmd.exe`; native targets do not. A missing command has an explicit diagnostic
+  and exit 127.
+- **`fridge run` could recreate a lease after release.** Shutdown now stops new
+  heartbeats and waits for any heartbeat already in flight before taking down
+  the card.
+- **Configured view paths were trusted too late.** `door.path` now drives the
+  real automatic-render target, every configured target is confined by its
+  symlink-resolved destination, and malformed path or target-array shapes are
+  rejected before a view is written.
+- **Migration could partially publish unsafe input.** Non-dry migration requires
+  explicit identity, source paths stay inside the workspace, all source text is
+  secret-scanned before any write, and note creation plus optional freezing are
+  serialised under the registry mutex. Sources are capped at 10 MiB and re-read
+  after preflight and immediately before freezing; a concurrent edit now causes
+  `E_CONFLICT` instead of being overwritten.
+- **Automatic rendering could claim success without converging.** The body and
+  state stamp come from one snapshot, rendering retries when state changes
+  during publication, and an exhausted retry budget reports failure rather than
+  certifying a stale view.
 - **Breaking a lock, and holding one too long, were silent.** Section 5.2 and
   5.3 of the protocol require a `lock.broken` and a `lock.slow` note. Both were
   optional callbacks no caller passed; both are now unconditional.
@@ -95,9 +130,9 @@ regression test in both implementations.
 - `spec/protocol-v0.1.md` Section 6.3 rewritten to describe the decision
   procedure the implementations actually run, including the directory-intent
   expansion and its deliberate over-reporting, the bounded brace expansion, and
-  the narrow subsumption rule for excludes. New Invariant I5: reads that feed a
+  the narrow subsumption rule for excludes. New Invariant I4b: reads that feed a
   decision must fail closed on a corrupt record.
-- `vectors/scope-overlap.json` grew from 17 to 33 cases. One existing case
+- `vectors/scope-overlap.json` grew from 17 to 51 cases. One existing case
   changed: `src/api/*.ts` versus `src/api/*.js` was recorded as overlapping,
   which was an over-approximation the old implementation could not avoid. These
   two patterns cannot match the same path, and both implementations now agree.

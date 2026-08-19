@@ -4,26 +4,15 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/RagnarPitla/agent-fridge/internal/errs"
 )
 
-// maxBraceExpansions bounds brace expansion so a pathological pattern cannot
-// turn an overlap test into an exponential search.
-const maxBraceExpansions = 256
-
 func expandBracesBounded(pattern string) ([]string, error) {
-	out, err := ExpandBraces(pattern)
-	if err != nil {
-		return nil, err
-	}
-	if len(out) > maxBraceExpansions {
-		return nil, errs.New("E_PATH_INVALID",
-			"Pattern expands to too many alternatives: "+pattern).
-			WithHint("Split it into separate claims.")
-	}
-	return out, nil
+	return ExpandBraces(pattern)
 }
 
 type tokKind int
@@ -36,17 +25,55 @@ const (
 )
 
 type segTok struct {
-	kind tokKind
-	ch   byte
-	neg  bool
-	set  string
+	kind   tokKind
+	ch     rune
+	neg    bool
+	ranges []charRange
+}
+
+type charRange struct{ lo, hi rune }
+
+func normalizeRanges(in []charRange) []charRange {
+	sort.Slice(in, func(i, j int) bool {
+		if in[i].lo == in[j].lo {
+			return in[i].hi < in[j].hi
+		}
+		return in[i].lo < in[j].lo
+	})
+	out := []charRange{}
+	for _, r := range in {
+		if len(out) == 0 || r.lo > out[len(out)-1].hi+1 {
+			out = append(out, r)
+		} else if r.hi > out[len(out)-1].hi {
+			out[len(out)-1].hi = r.hi
+		}
+	}
+	return out
+}
+
+func parseClassRanges(set []rune, pattern string) ([]charRange, error) {
+	out := []charRange{}
+	for i := 0; i < len(set); {
+		if i+2 < len(set) && set[i+1] == '-' {
+			if set[i] > set[i+2] {
+				return nil, errs.New("E_PATH_INVALID", "Descending character range in: "+pattern)
+			}
+			out = append(out, charRange{set[i], set[i+2]})
+			i += 3
+		} else {
+			out = append(out, charRange{set[i], set[i]})
+			i++
+		}
+	}
+	return normalizeRanges(out), nil
 }
 
 // segTokens turns one path segment into single-character matchers plus stars.
 func segTokens(seg, pattern string) ([]segTok, error) {
+	chars := []rune(seg)
 	var out []segTok
-	for i := 0; i < len(seg); i++ {
-		c := seg[i]
+	for i := 0; i < len(chars); i++ {
+		c := chars[i]
 		switch c {
 		case '*':
 			if len(out) == 0 || out[len(out)-1].kind != tokStar {
@@ -57,22 +84,26 @@ func segTokens(seg, pattern string) ([]segTok, error) {
 		case '[':
 			j := i + 1
 			neg := false
-			if j < len(seg) && (seg[j] == '!' || seg[j] == '^') {
+			if j < len(chars) && (chars[j] == '!' || chars[j] == '^') {
 				neg = true
 				j++
 			}
-			var set strings.Builder
-			for j < len(seg) && seg[j] != ']' {
-				set.WriteByte(seg[j])
+			set := []rune{}
+			for j < len(chars) && chars[j] != ']' {
+				set = append(set, chars[j])
 				j++
 			}
-			if j >= len(seg) {
+			if j >= len(chars) {
 				return nil, errs.New("E_PATH_INVALID", "Unterminated character class in: "+pattern)
 			}
-			if set.Len() == 0 {
+			if len(set) == 0 {
 				return nil, errs.New("E_PATH_INVALID", "Empty character class in: "+pattern)
 			}
-			out = append(out, segTok{kind: tokClass, neg: neg, set: set.String()})
+			ranges, err := parseClassRanges(set, pattern)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, segTok{kind: tokClass, neg: neg, ranges: ranges})
 			i = j
 		default:
 			out = append(out, segTok{kind: tokLit, ch: c})
@@ -81,12 +112,26 @@ func segTokens(seg, pattern string) ([]segTok, error) {
 	return out, nil
 }
 
-// classHas reports membership in a character class. Ranges are not part of the
-// supported subset, so this is plain membership.
-func classHas(t segTok, c byte, insensitive bool) bool {
-	has := strings.IndexByte(t.set, c) >= 0
+func rangeHas(ranges []charRange, c rune) bool {
+	for _, r := range ranges {
+		if c >= r.lo && c <= r.hi {
+			return true
+		}
+	}
+	return false
+}
+
+// classHas reports membership in a character class, including inclusive
+// ranges such as a-z.
+func classHas(t segTok, c rune, insensitive bool) bool {
+	has := rangeHas(t.ranges, c)
 	if !has && insensitive {
-		has = strings.IndexByte(CaseFold(t.set, true), CaseFold(string(c), true)[0]) >= 0
+		for folded := unicode.SimpleFold(c); folded != c; folded = unicode.SimpleFold(folded) {
+			if rangeHas(t.ranges, folded) {
+				has = true
+				break
+			}
+		}
 	}
 	if t.neg {
 		return !has
@@ -94,11 +139,89 @@ func classHas(t segTok, c byte, insensitive bool) bool {
 	return has
 }
 
-func sameChar(a, b byte, insensitive bool) bool {
+func sameChar(a, b rune, insensitive bool) bool {
 	if a == b {
 		return true
 	}
-	return insensitive && CaseFold(string(a), true) == CaseFold(string(b), true)
+	return insensitive && strings.EqualFold(string(a), string(b))
+}
+
+func foldedRanges(in []charRange, insensitive bool) ([]charRange, bool) {
+	if !insensitive {
+		return normalizeRanges(append([]charRange{}, in...)), true
+	}
+	out := []charRange{}
+	add := func(lo, hi rune) {
+		if lo <= hi {
+			out = append(out, charRange{lo, hi})
+		}
+	}
+	for _, r := range in {
+		if r.lo < 0 || r.hi > unicode.MaxASCII {
+			return nil, false
+		}
+		add(r.lo, minRune(r.hi, '@'))
+		add(maxRune(r.lo, 'A')+('a'-'A'), minRune(r.hi, 'Z')+('a'-'A'))
+		add(maxRune(r.lo, '['), r.hi)
+	}
+	return normalizeRanges(out), true
+}
+
+func rangesIntersect(a, b []charRange) bool {
+	for _, x := range a {
+		for _, y := range b {
+			if maxRune(x.lo, y.lo) <= minRune(x.hi, y.hi) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hasOutside(positive, excluded []charRange) bool {
+	for _, p := range positive {
+		cursor := p.lo
+		covered := false
+		for _, x := range excluded {
+			if x.hi < cursor {
+				continue
+			}
+			if x.lo > p.hi {
+				break
+			}
+			if x.lo > cursor {
+				return true
+			}
+			if x.hi >= p.hi {
+				covered = true
+				break
+			}
+			if x.hi+1 > cursor {
+				cursor = x.hi + 1
+			}
+			if cursor > p.hi {
+				break
+			}
+		}
+		if !covered && cursor <= p.hi {
+			return true
+		}
+	}
+	return false
+}
+
+func minRune(a, b rune) rune {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxRune(a, b rune) rune {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // charsIntersect reports whether two single-character matchers can accept the
@@ -116,18 +239,21 @@ func charsIntersect(x, y segTok, insensitive bool) bool {
 	if y.kind == tokLit {
 		return classHas(x, y.ch, insensitive)
 	}
-	// A negated class excludes a finite set from an effectively unbounded
-	// alphabet, so anything involving one is treated as intersecting: wrong
-	// only in the safe direction.
-	if x.neg || y.neg {
+	xr, xKnown := foldedRanges(x.ranges, insensitive)
+	yr, yKnown := foldedRanges(y.ranges, insensitive)
+	if !xKnown || !yKnown {
 		return true
 	}
-	for i := 0; i < len(x.set); i++ {
-		if classHas(y, x.set[i], insensitive) {
-			return true
-		}
+	if x.neg && y.neg {
+		return true
 	}
-	return false
+	if x.neg {
+		return hasOutside(yr, xr)
+	}
+	if y.neg {
+		return hasOutside(xr, yr)
+	}
+	return rangesIntersect(xr, yr)
 }
 
 func allStars(ts []segTok) bool {

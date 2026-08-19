@@ -9,7 +9,8 @@ two degraded cases at the end.
 Two rules carry across every environment on this page:
 
 1. **Each participant needs its own `FRIDGE_ACTOR`,** or must pass `--agent` on
-   every command. Agent Fridge never guesses.
+   every actor-owned mutation. Read-only commands may infer a sole actor, but
+   ownership never guesses.
 2. **State is per checkout.** `.fridge/` lives beside `.git/`, so it travels
    with the repository into a container, an SSH session, or a CI runner without
    any extra configuration.
@@ -263,6 +264,11 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 fridge run --claim "src/api/**" --task "tests" -- npm test
 exit $LASTEXITCODE
 ```
+
+Bare commands and extensionless explicit paths are resolved through `PATHEXT`.
+Native executables run directly. Windows batch targets (`.cmd` and `.bat`) run
+through `cmd.exe`, so commands such as `npm.cmd` work without giving every
+unknown command generic shell semantics. A missing command exits `127`.
 
 ### cmd.exe
 

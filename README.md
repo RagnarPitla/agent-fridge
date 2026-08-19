@@ -249,7 +249,7 @@ Every asset has a matching `.sha256`, and `checksums.txt` covers the set.
 
 Both installers verify the checksum before installing, and both let you choose
 the directory and pin a release. The shell installer takes `--dir <path>` and
-`--version v0.2.1`; the PowerShell one takes `-Dir <path>` and `-Version v0.2.1`,
+`--version v0.2.2`; the PowerShell one takes `-Dir <path>` and `-Version v0.2.2`,
 because that is how PowerShell parameters work. With no arguments `install.sh`
 uses `/usr/local/bin` when it is writable and `~/.local/bin` otherwise, and
 `install.ps1` uses `%LOCALAPPDATA%\Programs\agent-fridge` and adds it to your
@@ -297,7 +297,7 @@ you know, or if you are vendoring the tool into a JavaScript monorepo. See
 
 ```bash
 fridge version
-# agent-fridge 0.2.1  protocol wcp/0.1  go go1.21.13  darwin/arm64
+# agent-fridge 0.2.2  protocol wcp/0.1  go go1.21.13  darwin/arm64
 
 fridge conform
 # Result: CONFORMANT. 62 case(s) passed.
@@ -578,8 +578,9 @@ short version is four rules:
    Locks record their owner PID and host, so a lock left by a dead process gets
    broken instead of waited on forever.
 4. **Ownership expires.** A claim carries a lease with a TTL. Heartbeats extend
-   it, any command from the owner counts as a heartbeat, and an expired claim is
-   swept by the next process that looks. A crashed agent cannot block the repo.
+   it, commands with explicit owner identity can renew it, and an expired claim
+   is swept by the next process that looks. Read-only identity inference never
+   renews ownership, so a crashed agent cannot block the repo.
 
 ```
 .fridge/

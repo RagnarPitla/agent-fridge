@@ -8,7 +8,7 @@ import { AppError } from '../core/errors.mjs';
 import { parseDuration } from '../core/util.mjs';
 import { guardSecrets } from '../core/secrets.mjs';
 import { emit } from '../core/output.mjs';
-import { withMutex } from '../core/mutex.mjs';
+import { breakMutexIfRecoverable, withMutex } from '../core/mutex.mjs';
 import { exists, listJson, readJsonSafe, rmrf, unlinkQuiet, walkJson, writeAtomic, writeJsonAtomic } from '../core/fsx.mjs';
 import {
   archiveClaim, deleteMessage, findMessage, listActors, listClaims, listMessages, openWorkspace, pin, readActor,
@@ -292,14 +292,7 @@ async function applyFix(ws, f) {
   } else if (f.id.startsWith('orphan-lease:')) unlinkQuiet(path.join(ws.paths.leases, `${f.id.split(':')[1]}.json`));
   else if (f.id === 'tmp-junk') { rmrf(ws.paths.tmp); fs.mkdirSync(ws.paths.tmp, { recursive: true }); }
   else if (f.id === 'mutex-held') {
-    // Re-read before removing. Between the scan and here the lock can have
-    // been released and legitimately retaken, and deleting it then would let
-    // a second writer in behind the current holder's back.
-    const ownerFile = path.join(ws.paths.mutex, 'owner.json');
-    const owner = readJsonSafe(ownerFile);
-    const ageMs = Date.now() - (owner.ok ? Date.parse(owner.value.acquiredAt) : 0);
-    const dead = owner.ok && owner.value.host === hostId() && !processAlive(owner.value.pid);
-    if (!owner.ok || dead || ageMs > ws.config.mutex.staleMs) rmrf(ws.paths.mutex);
+    await breakMutexIfRecoverable(ws);
   }
   else if (f.id === 'door-drift') writeAtomic(ws.paths.door, renderDoor(ws), ws.paths.tmp);
   else if (f.id.startsWith('adapter-drift:')) adapterTemplates.install(ws.root, [f.id.split(':')[1]], { tmpDir: ws.paths.tmp });

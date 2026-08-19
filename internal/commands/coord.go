@@ -581,20 +581,7 @@ func applyFix(ws *store.Workspace, f *finding) error {
 			return err
 		}
 	case f.ID == "mutex-held":
-		// Re-read before removing. Between the scan and here the lock can have
-		// been released and legitimately retaken, and deleting it then would
-		// let a second writer in behind the current holder's back.
-		owner, ok := fsx.ReadJSONSafe(filepath.Join(ws.Paths.Mutex, "owner.json"))
-		ageMs := util.NowMs()
-		dead := false
-		if ok {
-			acquired, _ := util.ParseMs(owner.Str("acquiredAt"))
-			ageMs = util.NowMs() - acquired
-			dead = owner.Str("host") == util.HostID() && !util.ProcessAlive(owner.Int("pid"))
-		}
-		if !ok || dead || ageMs > int64(ws.Config.Num("mutex.staleMs")) {
-			fsx.RmRF(ws.Paths.Mutex)
-		}
+		mutex.BreakIfRecoverable(ws)
 	case f.ID == "door-drift":
 		if err := fsx.WriteAtomic(ws.Paths.Door, render.Door(ws), ws.Paths.Tmp); err != nil {
 			return err
@@ -760,7 +747,9 @@ func cmdSimulate(ctx *Ctx) (int, error) {
 	notes := []jsonx.Obj{}
 	for _, f := range fsx.WalkJSON(ws.Paths.Notes) {
 		if v, ok := fsx.ReadJSONSafe(f); ok {
-			notes = append(notes, v)
+			if ts, ok := util.ParseMs(v.Str("ts")); ok && ts >= startedAt {
+				notes = append(notes, v)
+			}
 		}
 	}
 	acquired, released, denied, pinned := []jsonx.Obj{}, []jsonx.Obj{}, []jsonx.Obj{}, []jsonx.Obj{}

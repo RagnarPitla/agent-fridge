@@ -20,7 +20,7 @@ const steps = [
   ['go vet', 'node', ['tools/go.mjs', 'vet', './...']],
   ['node tests', 'node', ['tools/run-tests.mjs', ...(fast ? ['test/unit'] : ['test/unit', 'test/integration', 'test/concurrency'])]],
   ['go tests', 'node', ['tools/go.mjs', 'test', ...(fast ? ['./internal/...'] : ['./...'])]],
-  ['conformance, go', 'node', ['tools/go.mjs', 'run', './cmd/fridge', '--', 'conform']],
+  ['conformance, go', 'node', ['tools/go.mjs', 'run', './cmd/fridge', 'conform']],
   ['conformance, node', 'node', ['bin/fridge.mjs', 'conform']],
 ];
 if (!fast) steps.push(['parity', 'node', ['tools/parity.mjs']]);

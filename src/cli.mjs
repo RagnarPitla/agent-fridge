@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { AppError, EXIT, EXIT_DOC } from './core/errors.mjs';
 import { emitError } from './core/output.mjs';
+import { withMutex } from './core/mutex.mjs';
+import { openWorkspace, renewOwnLeases, requireActor } from './core/store.mjs';
+import { autoRender } from './core/render.mjs';
 import { BIN, PACKAGE, PRODUCT, PROTOCOL, TAGLINE, VERSION } from './brand.mjs';
 import * as workspace from './commands/workspace.mjs';
 import * as claims from './commands/claims.mjs';
@@ -122,6 +125,35 @@ function commandHelp(name) {
   ].join('\n');
 }
 
+async function renewForInvocation(ctx) {
+  const explicit = ctx.flags.agent || process.env.FRIDGE_ACTOR;
+  if (!explicit || ['init', 'join', 'version', 'conform'].includes(ctx.command)) return;
+  let ws;
+  try {
+    ws = openWorkspace({ repo: ctx.flags.repo, cwd: ctx.cwd });
+  } catch {
+    return; // the command reports workspace errors through its normal path
+  }
+  let session;
+  try {
+    ({ session } = requireActor(ws, { agent: explicit }));
+  } catch (error) {
+    if (ctx.flags.agent) throw error;
+    if (error?.code === 'E_NO_SESSION') return; // stale environment identity
+    throw error;
+  }
+  if (process.env.FRIDGE_NO_RENEW === '1') return;
+  try {
+    await withMutex(ws, 'renew', () => {
+      const renewed = renewOwnLeases(ws, session);
+      if (renewed.length) autoRender(ws);
+    });
+  } catch {
+    // Renewal is opportunistic. Identity was validated above; the command
+    // itself still reports corruption or mutex errors through its normal path.
+  }
+}
+
 export async function main(argv = process.argv.slice(2)) {
   let ctx = { json: false, quiet: false, verbose: false, cwd: process.cwd(), command: 'fridge' };
   try {
@@ -153,6 +185,7 @@ export async function main(argv = process.argv.slice(2)) {
     if (process.env.FRIDGE_FAULT && process.env.FRIDGE_TEST !== '1') {
       throw new AppError('E_USAGE', 'FRIDGE_FAULT is only honoured when FRIDGE_TEST=1.');
     }
+    await renewForInvocation(ctx);
     const code = await spec.fn(ctx);
     return code ?? 0;
   } catch (err) {

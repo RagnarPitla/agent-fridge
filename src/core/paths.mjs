@@ -11,6 +11,7 @@ const IS_WIN = process.platform === 'win32';
 const META = /[*?[{]/;
 const WIN_RESERVED = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 const RESERVED_ROOTS = ['.fridge', '.git'];
+const MAX_BRACE_EXPANSIONS = 256;
 
 export const caseFold = (s, insensitive) => (insensitive ? s.toLowerCase() : s);
 
@@ -35,31 +36,45 @@ export function isPrefixPath(a, b) {
 }
 
 export function expandBraces(pattern) {
-  const open = pattern.indexOf('{');
-  if (open === -1) return [pattern];
-  let depth = 0;
-  let close = -1;
-  for (let i = open; i < pattern.length; i++) {
-    if (pattern[i] === '{') depth++;
-    else if (pattern[i] === '}') {
-      depth--;
-      if (depth === 0) { close = i; break; }
+  const out = [];
+  const visit = (value) => {
+    const open = value.indexOf('{');
+    if (open === -1) {
+      if (out.length >= MAX_BRACE_EXPANSIONS) {
+        throw new AppError('E_PATH_INVALID', `Pattern expands to more than ${MAX_BRACE_EXPANSIONS} alternatives: ${pattern}`, {
+          hint: 'Split it into separate claims.',
+        });
+      }
+      out.push(value);
+      return;
     }
-  }
-  if (close === -1) throw new AppError('E_PATH_INVALID', `Unterminated brace in pattern: ${pattern}`);
-  const head = pattern.slice(0, open);
-  const tail = pattern.slice(close + 1);
-  const body = pattern.slice(open + 1, close);
-  const parts = [];
-  let depth2 = 0;
-  let cur = '';
-  for (const ch of body) {
-    if (ch === '{') depth2++;
-    if (ch === '}') depth2--;
-    if (ch === ',' && depth2 === 0) { parts.push(cur); cur = ''; } else cur += ch;
-  }
-  parts.push(cur);
-  return parts.flatMap((p) => expandBraces(head + p + tail));
+    let depth = 0;
+    let close = -1;
+    for (let i = open; i < value.length; i++) {
+      if (value[i] === '{') depth++;
+      else if (value[i] === '}') {
+        depth--;
+        if (depth === 0) { close = i; break; }
+      }
+    }
+    if (close === -1) throw new AppError('E_PATH_INVALID', `Unterminated brace in pattern: ${pattern}`);
+    const head = value.slice(0, open);
+    const tail = value.slice(close + 1);
+    const body = value.slice(open + 1, close);
+    let nested = 0;
+    let start = 0;
+    for (let i = 0; i < body.length; i++) {
+      if (body[i] === '{') nested++;
+      else if (body[i] === '}') nested--;
+      else if (body[i] === ',' && nested === 0) {
+        visit(head + body.slice(start, i) + tail);
+        start = i + 1;
+      }
+    }
+    visit(head + body.slice(start) + tail);
+  };
+  visit(pattern);
+  return out;
 }
 
 function segmentToRegex(seg, pattern) {
@@ -104,7 +119,11 @@ export function patternToRegExp(pattern, insensitive = false) {
       re += segmentToRegex(seg, pattern) + (last ? '' : '/');
     }
   });
-  return new RegExp(re + '$', insensitive ? 'i' : '');
+  try {
+    return new RegExp(re + '$', insensitive ? 'iu' : 'u');
+  } catch {
+    throw new AppError('E_PATH_INVALID', `Unsupported pattern: ${pattern}`);
+  }
 }
 
 // ------------------------------------------------------- pattern intersection
@@ -120,61 +139,145 @@ export function patternToRegExp(pattern, insensitive = false) {
 // the same string" is decidable. It is decided here by two dynamic programs:
 // one over path segments for `**`, one over characters inside a segment.
 
-const MAX_BRACE_EXPANSIONS = 256;
+const expandBracesBounded = (pattern) => expandBraces(pattern);
 
-function expandBracesBounded(pattern) {
-  const out = expandBraces(pattern);
-  if (out.length > MAX_BRACE_EXPANSIONS) {
-    throw new AppError('E_PATH_INVALID', `Pattern expands to ${out.length} alternatives (limit ${MAX_BRACE_EXPANSIONS}): ${pattern}`, {
-      hint: 'Split it into separate claims.',
-    });
+function classRanges(set, pattern) {
+  const chars = Array.from(set);
+  const ranges = [];
+  for (let i = 0; i < chars.length;) {
+    if (i + 2 < chars.length && chars[i + 1] === '-') {
+      const lo = chars[i].codePointAt(0);
+      const hi = chars[i + 2].codePointAt(0);
+      if (lo > hi) throw new AppError('E_PATH_INVALID', `Descending character range in: ${pattern}`);
+      ranges.push([lo, hi]);
+      i += 3;
+    } else {
+      const cp = chars[i].codePointAt(0);
+      ranges.push([cp, cp]);
+      i++;
+    }
   }
-  return out;
+  ranges.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const merged = [];
+  for (const range of ranges) {
+    const last = merged[merged.length - 1];
+    if (!last || range[0] > last[1] + 1) merged.push([...range]);
+    else last[1] = Math.max(last[1], range[1]);
+  }
+  return merged;
 }
 
 /** One path segment becomes a list of single-character matchers plus stars. */
 function segTokens(seg, pattern) {
+  const chars = Array.from(seg);
   const out = [];
-  for (let i = 0; i < seg.length; i++) {
-    const c = seg[i];
+  for (let i = 0; i < chars.length; i++) {
+    const c = chars[i];
     if (c === '*') {
       if (!out.length || out[out.length - 1].t !== 'star') out.push({ t: 'star' });
     } else if (c === '?') out.push({ t: 'any' });
     else if (c === '[') {
       let j = i + 1;
       let neg = false;
-      if (seg[j] === '!' || seg[j] === '^') { neg = true; j++; }
+      if (chars[j] === '!' || chars[j] === '^') { neg = true; j++; }
       let set = '';
-      while (j < seg.length && seg[j] !== ']') { set += seg[j]; j++; }
-      if (j >= seg.length) throw new AppError('E_PATH_INVALID', `Unterminated character class in: ${pattern}`);
+      while (j < chars.length && chars[j] !== ']') { set += chars[j]; j++; }
+      if (j >= chars.length) throw new AppError('E_PATH_INVALID', `Unterminated character class in: ${pattern}`);
       if (set === '') throw new AppError('E_PATH_INVALID', `Empty character class in: ${pattern}`);
-      out.push({ t: 'class', neg, set });
+      out.push({ t: 'class', neg, ranges: classRanges(set, pattern) });
       i = j;
     } else out.push({ t: 'lit', c });
   }
   return out;
 }
 
-/** Does a character class contain c? Ranges are not part of the subset, so this is membership. */
+const rangeHas = (ranges, cp) => ranges.some(([lo, hi]) => cp >= lo && cp <= hi);
+const normalizeRanges = (ranges) => {
+  const sorted = ranges.map(([lo, hi]) => [lo, hi]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const out = [];
+  for (const range of sorted) {
+    const last = out[out.length - 1];
+    if (!last || range[0] > last[1] + 1) out.push(range);
+    else last[1] = Math.max(last[1], range[1]);
+  }
+  return out;
+};
+
+/**
+ * Canonicalise ASCII classes to lowercase for case-insensitive comparison.
+ * Unicode case mappings are not monotonic over arbitrary ranges, so a class
+ * containing non-ASCII code points returns null and the caller fails safe.
+ */
+const foldedRanges = (ranges, insensitive) => {
+  if (!insensitive) return normalizeRanges(ranges);
+  const out = [];
+  const add = (lo, hi) => { if (lo <= hi) out.push([lo, hi]); };
+  for (const [lo, hi] of ranges) {
+    if (lo < 0 || hi > 0x7f) return null;
+    add(lo, Math.min(hi, 0x40));
+    add(Math.max(lo, 0x41) + 0x20, Math.min(hi, 0x5a) + 0x20);
+    add(Math.max(lo, 0x5b), hi);
+  }
+  return normalizeRanges(out);
+};
+
+/** Does a character class contain c, including inclusive ranges such as a-z? */
 const classHas = (tok, c, insensitive) => {
-  const has = insensitive
-    ? tok.set.toLowerCase().includes(c.toLowerCase())
-    : tok.set.includes(c);
+  if (insensitive) {
+    const escaped = tok.ranges.map(([lo, hi]) => {
+      const start = `\\u{${lo.toString(16)}}`;
+      const end = `\\u{${hi.toString(16)}}`;
+      return lo === hi ? start : `${start}-${end}`;
+    }).join('');
+    return new RegExp(`^[${tok.neg ? '^' : ''}${escaped}]$`, 'iu').test(c);
+  }
+  const has = rangeHas(tok.ranges, c.codePointAt(0));
   return tok.neg ? !has : has;
+};
+
+function rangesIntersect(a, b) {
+  for (const [alo, ahi] of a) {
+    for (const [blo, bhi] of b) {
+      if (Math.max(alo, blo) <= Math.min(ahi, bhi)) return true;
+    }
+  }
+  return false;
+}
+
+function hasOutside(positive, excluded) {
+  for (const [lo, hi] of positive) {
+    let cursor = lo;
+    for (const [xlo, xhi] of excluded) {
+      if (xhi < cursor) continue;
+      if (xlo > hi) break;
+      if (xlo > cursor) return true;
+      cursor = Math.max(cursor, xhi + 1);
+      if (cursor > hi) break;
+    }
+    if (cursor <= hi) return true;
+  }
+  return false;
+}
+
+const sameChar = (a, b, insensitive) => {
+  if (a === b) return true;
+  if (!insensitive) return false;
+  return new RegExp(`^\\u{${a.codePointAt(0).toString(16)}}$`, 'iu').test(b);
 };
 
 /** Can two single-character matchers accept the same character? */
 function charsIntersect(x, y, insensitive) {
   if (x.t === 'any' || y.t === 'any') return true;
-  if (x.t === 'lit' && y.t === 'lit') return caseFold(x.c, insensitive) === caseFold(y.c, insensitive);
+  if (x.t === 'lit' && y.t === 'lit') return sameChar(x.c, y.c, insensitive);
   if (x.t === 'lit') return classHas(y, x.c, insensitive);
   if (y.t === 'lit') return classHas(x, y.c, insensitive);
-  // Two classes. A negated class excludes a finite set from an effectively
-  // unbounded alphabet, so anything involving one is treated as intersecting:
-  // wrong only in the safe direction.
-  if (x.neg || y.neg) return true;
-  for (const c of x.set) if (classHas(y, c, insensitive)) return true;
-  return false;
+  const xr = foldedRanges(x.ranges, insensitive);
+  const yr = foldedRanges(y.ranges, insensitive);
+  if (!xr || !yr) return true;
+  if (x.neg && y.neg) return true;
+  if (x.neg) return hasOutside(yr, xr);
+  if (y.neg) return hasOutside(xr, yr);
+  return rangesIntersect(xr, yr);
 }
 
 /** Can these two brace-free, separator-free segment patterns match a common string? */

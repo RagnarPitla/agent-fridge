@@ -82,6 +82,26 @@ func TestRaceHelperProcess(t *testing.T) {
 		}
 		report(jsonx.Obj{"actor": actor, "code": float64(code), "claimId": claimID, "error": errCode})
 
+	case "config":
+		var out bytes.Buffer
+		code := commands.Main([]string{"config", os.Getenv("RACE_KEY"), os.Getenv("RACE_VALUE"), "--json"}, &out, io.Discard)
+		payload, _ := jsonx.ParseObj(out.Bytes())
+		var errCode any
+		if payload != nil && payload.Str("error.code") != "" {
+			errCode = payload.Str("error.code")
+		}
+		report(jsonx.Obj{"code": float64(code), "key": os.Getenv("RACE_KEY"), "error": errCode})
+
+	case "heartbeat":
+		var out bytes.Buffer
+		code := commands.Main([]string{"heartbeat", "--json"}, &out, io.Discard)
+		payload, _ := jsonx.ParseObj(out.Bytes())
+		var errCode any
+		if payload != nil && payload.Str("error.code") != "" {
+			errCode = payload.Str("error.code")
+		}
+		report(jsonx.Obj{"code": float64(code), "renewed": float64(len(payload.ArrAt("data.renewed"))), "error": errCode})
+
 	case "write-fridge":
 		count := envCount("WRITE_COUNT", 25)
 		written := 0
@@ -227,6 +247,19 @@ func detail(results []raceResult) string {
 	return "[" + strings.Join(parts, ",") + "]"
 }
 
+func readObjFile(t *testing.T, file string) jsonx.Obj {
+	t.Helper()
+	raw, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	obj, err := jsonx.ParseObj(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return obj
+}
+
 func TestEightProcessesOneFileExactlyOneWinner(t *testing.T) {
 	names := actorNames(8, "agent")
 	root := bootstrap(t, "race-same", names...)
@@ -277,6 +310,86 @@ func TestEightProcessesOneFileExactlyOneWinner(t *testing.T) {
 	}
 	if acquired != 1 || denied != 7 {
 		t.Errorf("wall shows %d acquired and %d denied", acquired, denied)
+	}
+}
+
+func TestRangeAndLiteralExactlyOneWinner(t *testing.T) {
+	root := bootstrap(t, "race-range", "left", "right")
+	results := race(t, root, []map[string]string{
+		{"FRIDGE_RACE_MODE": "claim", "FRIDGE_ACTOR": "left", "RACE_TARGET": "[a-z].md"},
+		{"FRIDGE_RACE_MODE": "claim", "FRIDGE_ACTOR": "right", "RACE_TARGET": "b.md"},
+	})
+	if len(withCode(results, 0)) != 1 || len(withCode(results, 10)) != 1 {
+		t.Fatalf("range and literal must have one winner and one refusal: %s", detail(results))
+	}
+}
+
+func TestConcurrentConfigWritesPreserveEveryKey(t *testing.T) {
+	root := bootstrap(t, "race-config", "alice")
+	results := race(t, root, []map[string]string{
+		{"FRIDGE_RACE_MODE": "config", "RACE_KEY": "paths.materializeLimit", "RACE_VALUE": "1234"},
+		{"FRIDGE_RACE_MODE": "config", "RACE_KEY": "lease.graceMs", "RACE_VALUE": "4321"},
+	})
+	if len(withCode(results, 0)) != 2 {
+		t.Fatalf("config writers failed: %s", detail(results))
+	}
+	config := readObjFile(t, filepath.Join(root, ".fridge", "config.json"))
+	if config.Int("paths.materializeLimit") != 1234 || config.Int("lease.graceMs") != 4321 {
+		t.Fatalf("one config write was lost: %s", jsonx.Compact(config))
+	}
+}
+
+func TestConcurrentSameSessionClaimsPreserveEveryToken(t *testing.T) {
+	root := bootstrap(t, "race-session-tokens", "alice")
+	perChild := []map[string]string{}
+	for i := 0; i < 8; i++ {
+		perChild = append(perChild, map[string]string{
+			"FRIDGE_RACE_MODE": "claim", "FRIDGE_ACTOR": "alice",
+			"RACE_TARGET": fmt.Sprintf("parallel/file-%d.ts", i),
+		})
+	}
+	results := race(t, root, perChild)
+	if len(withCode(results, 0)) != len(perChild) {
+		t.Fatalf("same-session claims failed: %s", detail(results))
+	}
+	actor := readObjFile(t, filepath.Join(root, ".fridge", "actors", "alice.json"))
+	session := readObjFile(t, filepath.Join(root, ".fridge", "sessions", actor.Str("currentSessionId")+".json"))
+	tokens := session.ObjAt("tokens")
+	if len(tokens) != len(perChild) {
+		t.Fatalf("same-session read-modify-write lost tokens: got %d want %d", len(tokens), len(perChild))
+	}
+	for _, result := range results {
+		if tokens.Str(result.Report.Str("claimId")) == "" {
+			t.Fatalf("session is missing token for %s", result.Report.Str("claimId"))
+		}
+	}
+	if r := fridge(t, root, []string{"render", "--check", "--json"}, runOpts{Actor: "alice"}); r.Code != 0 {
+		t.Fatalf("auto-render left an older snapshot on the door: %s", r.Stdout)
+	}
+}
+
+func TestConcurrentHeartbeatsIncrementRenewals(t *testing.T) {
+	root := bootstrap(t, "race-heartbeat", "alice")
+	claimed := fridge(t, root, []string{
+		"claim", "src/**", "--task", "heartbeat race", "--ttl", "30s", "--json",
+	}, runOpts{Actor: "alice"})
+	if claimed.Code != 0 {
+		t.Fatalf("claim failed: %s", claimed.Stdout)
+	}
+	claimID := claimed.JSON.Str("data.claimId")
+	perChild := []map[string]string{}
+	for i := 0; i < 8; i++ {
+		perChild = append(perChild, map[string]string{
+			"FRIDGE_RACE_MODE": "heartbeat", "FRIDGE_ACTOR": "alice", "FRIDGE_NO_RENEW": "1",
+		})
+	}
+	results := race(t, root, perChild)
+	if len(withCode(results, 0)) != len(perChild) {
+		t.Fatalf("heartbeats failed: %s", detail(results))
+	}
+	lease := readObjFile(t, filepath.Join(root, ".fridge", "leases", claimID+".json"))
+	if lease.Int("renewals") != len(perChild) {
+		t.Fatalf("heartbeat writers overwrote one another: got %d want %d", lease.Int("renewals"), len(perChild))
 	}
 }
 

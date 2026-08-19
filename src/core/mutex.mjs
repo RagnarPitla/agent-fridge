@@ -60,8 +60,8 @@ export const seams = {
 // that blocks it is open for microseconds.
 const RELEASE_TIMEOUT_MS = 2000;
 
-/** Identifies one specific tenancy of the lock, so a waiter can tell "the holder I judged" from "whoever holds it now". */
-const ownerKey = (o) => `${o.host}|${o.pid}|${o.acquiredAt}|${o.nonce || ''}`;
+/** Identifies the exact owner snapshot a waiter judged, including its latest heartbeat. */
+const ownerKey = (o) => `${o.host}|${o.pid}|${o.acquiredAt}|${o.heartbeatAt || o.acquiredAt}|${o.nonce || ''}`;
 
 /**
  * Serialises every removal of the lock directory behind a second directory.
@@ -118,6 +118,28 @@ function breakLock(lockDir, ownerFile, key, ownerOK, stale) {
     rmrf(dead);
     return true;
   }).value === true;
+}
+
+/** Doctor-style recovery through the same generation-fenced breaker as acquisition. */
+export function breakMutexIfRecoverable(ws) {
+  const lockDir = ws.paths.mutex;
+  const ownerFile = path.join(lockDir, 'owner.json');
+  const stale = ws.config.mutex.staleMs;
+  const owner = readJsonSafe(ownerFile);
+  let key = 'unreadable';
+  let recoverable = false;
+  if (owner.ok) {
+    key = ownerKey(owner.value);
+    const age = Date.now() - Date.parse(owner.value.heartbeatAt || owner.value.acquiredAt);
+    recoverable = (owner.value.host === hostId() && !processAlive(owner.value.pid)) || age > stale;
+  } else {
+    try {
+      const stat = seams.statLock(lockDir);
+      key = `unreadable@${stat.mtimeMs}`;
+      recoverable = Date.now() - stat.mtimeMs > stale;
+    } catch { /* an uninspectable lock is not safe to break */ }
+  }
+  return recoverable && breakLock(lockDir, ownerFile, key, owner.ok, stale);
 }
 
 export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}) {
@@ -179,8 +201,9 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
       // the handlers are installed, and a failure is cleaned up on the spot
       // while no other process can yet have judged this lock stale.
       try {
+        const acquiredAt = nowIso();
         writeJsonAtomic(ownerFile, {
-          acquiredAt: nowIso(), host: hostId(), nonce, op, pid: process.pid,
+          acquiredAt, heartbeatAt: acquiredAt, host: hostId(), nonce, op, pid: process.pid,
           schema: 'wcp/0.1/mutex-owner', sessionId: ws.sessionId || null, writer: WRITER,
         }, ws.paths.tmp);
       } catch (e) {
@@ -219,7 +242,7 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
         }
       } else {
         const o = owner.value;
-        const age = Date.now() - Date.parse(o.acquiredAt || 0);
+        const age = Date.now() - Date.parse(o.heartbeatAt || o.acquiredAt || 0);
         key = ownerKey(o);
         if (o.host === hostId() && !processAlive(o.pid)) { breakIt = true; why = 'owner-process-gone'; }
         else if (age > stale) { breakIt = true; why = 'owner-stale'; }
@@ -261,7 +284,45 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
         hint: 'Retry. If it keeps happening, raise mutex.staleMs in .fridge/config.json',
       });
     }
-    return await fn();
+    const refresh = () => {
+      const until = Date.now() + RELEASE_TIMEOUT_MS;
+      for (;;) {
+        let lost = false;
+        let writeError = null;
+        const attempt = withBreakLock(lockDir, stale, () => {
+          const current = readJsonSafe(ownerFile);
+          if (!current.ok || current.value.nonce !== nonce) {
+            lost = true;
+            return false;
+          }
+          try {
+            writeJsonAtomic(ownerFile, { ...current.value, heartbeatAt: nowIso() }, ws.paths.tmp);
+            return true;
+          } catch (error) {
+            writeError = error;
+            return false;
+          }
+        });
+        if (writeError) {
+          throw new AppError('E_STATE_CORRUPT', `Could not refresh the registry lock: ${writeError.code || writeError.message}`, {
+            hint: 'Check permissions on .fridge/locks and .fridge/tmp.',
+          });
+        }
+        if (attempt.entered && attempt.value) return;
+        if (attempt.entered && lost) {
+          throw new AppError('E_MUTEX_TIMEOUT', 'Another process broke this lock while the operation was still running.', {
+            hint: 'Retry. If it keeps happening, raise mutex.staleMs in .fridge/config.json',
+          });
+        }
+        if (Date.now() >= until) {
+          throw new AppError('E_MUTEX_TIMEOUT', 'Could not refresh the registry mutex before the deadline.', {
+            hint: 'Retry, or run: fridge doctor --fix',
+          });
+        }
+        sleepSync(2);
+      }
+    };
+    return await fn(refresh);
   } finally {
     const heldMs = Date.now() - startedAt;
     release();

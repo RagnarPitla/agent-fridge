@@ -21,6 +21,8 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
 
+var beforeExclusivePublish = func(_, _ string) {}
+
 const isWindows = runtime.GOOS == "windows"
 
 // EnsureDir creates a directory tree, mapping a read-only or forbidden target
@@ -131,6 +133,7 @@ func CreateExclusive(finalPath, text string, tmpDir string) error {
 		UnlinkQuiet(tmp)
 		return errs.New("E_STATE_CORRUPT", "Failed staging "+finalPath+": "+err.Error())
 	}
+	beforeExclusivePublish(tmp, finalPath)
 	// Link, not open+write. A reader that opens the final name always sees the
 	// whole note, because the name only exists once the bytes are on disk.
 	if err := os.Link(tmp, finalPath); err != nil {

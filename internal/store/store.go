@@ -14,6 +14,7 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/errs"
 	"github.com/RagnarPitla/agent-fridge/internal/fsx"
 	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
+	pathutil "github.com/RagnarPitla/agent-fridge/internal/paths"
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
 
@@ -224,7 +225,47 @@ func Open(opts OpenOptions) (*Workspace, error) {
 		wsID = util.NewID("wsp")
 	}
 	config := jsonx.DeepMerge(DefaultConfig(wsID), loaded)
+	door, err := ValidateDoorConfig(root, config, "E_STATE_CORRUPT")
+	if err != nil {
+		return nil, err
+	}
+	p.Door = door
 	return &Workspace{Root: root, Paths: p, Initialized: true, Config: config, Cwd: cwd, Version: versionRaw}, nil
+}
+
+// ValidateDoorConfig checks shape and containment before any configured view is
+// written. shapeCode is E_STATE_CORRUPT for files on disk and E_USAGE for a
+// rejected config command.
+func ValidateDoorConfig(root string, config jsonx.Obj, shapeCode string) (string, error) {
+	invalid := func(message string) (string, error) {
+		e := errs.New(shapeCode, message)
+		if shapeCode == "E_STATE_CORRUPT" {
+			e = e.WithHint("Fix .fridge/config.json or run fridge doctor --fix.")
+		}
+		return "", e
+	}
+	door, ok := config.Get("door").(jsonx.Obj)
+	if !ok {
+		return invalid("Config key door must be an object.")
+	}
+	doorPath, ok := door["path"].(string)
+	if !ok || strings.TrimSpace(doorPath) == "" {
+		return invalid("Config key door.path must be a non-empty string.")
+	}
+	targets, ok := door["extraTargets"].(jsonx.Arr)
+	if !ok {
+		return invalid("Config key door.extraTargets must be an array of non-empty strings.")
+	}
+	for _, raw := range targets {
+		target, ok := raw.(string)
+		if !ok || strings.TrimSpace(target) == "" {
+			return invalid("Config key door.extraTargets must be an array of non-empty strings.")
+		}
+		if _, err := pathutil.ResolveInsideWorkspace(root, target, "door.extraTargets entry"); err != nil {
+			return "", err
+		}
+	}
+	return pathutil.ResolveInsideWorkspace(root, doorPath, "door.path")
 }
 
 // GitignoreFor is the allowlist written into .fridge/.gitignore.
@@ -517,7 +558,7 @@ func WriteSession(ws *Workspace, session jsonx.Obj) error {
 	return nil
 }
 
-// RequireActor resolves, and if necessary creates, the acting housemate.
+// RequireActor resolves a joined housemate for a read-only command.
 func RequireActor(ws *Workspace, agent, vendor string) (jsonx.Obj, jsonx.Obj, error) {
 	return RequireActorFor(ws, agent, vendor, false)
 }
@@ -527,9 +568,8 @@ func RequireActorMutating(ws *Workspace, agent, vendor string) (jsonx.Obj, jsonx
 	return RequireActorFor(ws, agent, vendor, true)
 }
 
-// RequireActorFor resolves the actor and its live session, and renews any
-// leases that session already holds. Renewal here rather than at each call
-// site is what makes lease.renewOnAnyCommand true of every command.
+// RequireActorFor resolves the actor and its live session. Actor and session
+// creation belong only to join; a typo on --agent must not mutate the door.
 func RequireActorFor(ws *Workspace, agent, vendor string, mutating bool) (jsonx.Obj, jsonx.Obj, error) {
 	name, err := ResolveActorNameFor(ws, agent, mutating)
 	if err != nil {
@@ -537,30 +577,17 @@ func RequireActorFor(ws *Workspace, agent, vendor string, mutating bool) (jsonx.
 	}
 	actor := ReadActor(ws, name)
 	if actor == nil {
-		if agent != "" || os.Getenv("FRIDGE_ACTOR") != "" {
-			res, err := JoinActor(ws, name, vendor)
-			if err != nil {
-				return nil, nil, err
-			}
-			ws.Actor, ws.Session, ws.SessID = res.Actor, res.Session, res.Session.Str("id")
-			_, _ = RenewOwnLeases(ws, res.Session)
-			return res.Actor, res.Session, nil
-		}
 		return nil, nil, errs.New("E_NO_SESSION",
 			fmt.Sprintf("No housemate named '%s' on this door.", name)).
 			WithHint("fridge join --agent " + name)
 	}
 	session := ReadSession(ws, actor.Str("currentSessionId"))
 	if session == nil {
-		res, err := JoinActor(ws, name, actor.Str("vendor"))
-		if err != nil {
-			return nil, nil, err
-		}
-		session = res.Session
+		return nil, nil, errs.New("E_NO_SESSION",
+			fmt.Sprintf("%s has no current session on this door.", actor.Str("name"))).
+			WithHint(fmt.Sprintf("fridge join --agent %s --vendor %s", actor.Str("name"), actor.Str("vendor")))
 	}
 	ws.Actor, ws.Session, ws.SessID = actor, session, session.Str("id")
-	// Renewal must never be the thing that fails a command.
-	_, _ = RenewOwnLeases(ws, session)
 	return actor, session, nil
 }
 
@@ -576,7 +603,11 @@ func RenewOwnLeases(ws *Workspace, session jsonx.Obj) ([]string, error) {
 	}
 	ratio := ws.Config.Num("lease.renewThresholdRatio")
 	renewed := []string{}
-	for _, d := range ListClaims(ws, true) {
+	claims, err := ListClaimsStrict(ws, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range claims {
 		c := d.Claim
 		if c.Str("sessionId") != session.Str("id") || d.Stale {
 			continue
@@ -986,7 +1017,11 @@ func ClearQueueFor(ws *Workspace, claimID string) []jsonx.Obj {
 // ReapStale sweeps fallen cards. Must be called while holding the mutex.
 func ReapStale(ws *Workspace, actor, session jsonx.Obj, force bool) ([]jsonx.Obj, error) {
 	reaped := []jsonx.Obj{}
-	for _, d := range ListClaims(ws, true) {
+	claims, err := ListClaimsStrict(ws, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range claims {
 		if !d.Stale && !(force && d.Expired) {
 			continue
 		}

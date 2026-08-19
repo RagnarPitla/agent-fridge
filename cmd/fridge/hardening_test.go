@@ -5,13 +5,17 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/RagnarPitla/agent-fridge/internal/fsx"
 	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
 	"github.com/RagnarPitla/agent-fridge/internal/paths"
 	"github.com/RagnarPitla/agent-fridge/internal/secrets"
@@ -79,6 +83,9 @@ func TestOverlapIsDecidedOnPatternsNotOnFilesThatHappenToExist(t *testing.T) {
 		{"src/*.ts", "src/a?.ts"},
 		{"{src,docs}/**", "docs/guide.md"},
 		{"src/[ab]/x.ts", "src/[bc]/x.ts"},
+		{"[a-z].md", "b.md"},
+		{"[a-m].md", "[h-z].md"},
+		{"[!a-z].md", "7.md"},
 	}
 	for _, p := range colliding {
 		got := overlaps(t, scope(p[0]), scope(p[1]))
@@ -94,6 +101,9 @@ func TestOverlapIsDecidedOnPatternsNotOnFilesThatHappenToExist(t *testing.T) {
 		{"src/api/*.ts", "src/api/*.js"},
 		{"src/**", "docs/**"},
 		{"src/[ab]/x.ts", "src/[cd]/x.ts"},
+		{"[a-f].md", "[x-z].md"},
+		{"[!a-z].md", "b.md"},
+		{"[a-z].md", "[!a-z].md"},
 		{"README.md", "src/**"},
 		{"*.ts", "src/**"},
 	}
@@ -214,6 +224,27 @@ func TestTheBoardStillReadsButSaysLoudlyThatItIsIncomplete(t *testing.T) {
 	}
 }
 
+func TestCorruptClaimsBlockLeaseAndOwnershipMutations(t *testing.T) {
+	root := bootstrap(t, "gh-corrupt-mutations", "alice")
+	id := claimIDOf(t, fridge(t, root, []string{"claim", "src/**", "--task", "x", "--json"}, runOpts{Actor: "alice"}))
+	if err := os.WriteFile(filepath.Join(root, ".fridge", "claims", id+".json"), []byte(`{"schema":"wcp/0.1/claim", trunc`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"heartbeat", "--json"},
+		{"release", "--all", "--json"},
+		{"reap", "--dry-run", "--json"},
+	} {
+		result := fridge(t, root, args, runOpts{Actor: "alice"})
+		if result.Code != 5 || result.JSON.Str("error.code") != "E_STATE_CORRUPT" {
+			t.Fatalf("%s ignored a corrupt claim: exit %d, %s", args[0], result.Code, result.Stdout)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".fridge", "leases", id+".json")); err != nil {
+		t.Fatalf("failed mutation changed lease state: %v", err)
+	}
+}
+
 // --------------------------------------------------------------- 6. handoffs
 
 func TestAnOfferThatWasSupersededCannotBeRedeemedLater(t *testing.T) {
@@ -331,6 +362,80 @@ func TestAGeneratedViewCannotBeWrittenOutsideTheWorkspace(t *testing.T) {
 	}
 }
 
+func TestDoorPathIsConfinedAndDrivesAutomaticRendering(t *testing.T) {
+	root := bootstrap(t, "gh-door-path", "alice")
+	escaped := fridge(t, root, []string{"config", "door.path", "../escaped-door.md", "--json"}, runOpts{Actor: "alice"})
+	if escaped.Code != 40 || escaped.JSON.Str("error.code") != "E_PATH_INVALID" {
+		t.Fatalf("escaping door.path was accepted: exit %d, %s", escaped.Code, escaped.Stdout)
+	}
+	if message := escaped.JSON.Str("error.message"); !strings.Contains(message, "door.path") || strings.Contains(message, "[object Object]") {
+		t.Fatalf("door.path error label is not human-readable: %q", message)
+	}
+	if c := fridge(t, root, []string{"config", "door.path", "docs/AGENT-FRIDGE.md", "--json"}, runOpts{Actor: "alice"}).Code; c != 0 {
+		t.Fatalf("setting an in-workspace door.path exited %d", c)
+	}
+	if err := os.Remove(filepath.Join(root, ".fridge", "DOOR.md")); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	if c := fridge(t, root, []string{"pin", "render the configured door", "--json"}, runOpts{Actor: "alice"}).Code; c != 0 {
+		t.Fatalf("pin exited %d", c)
+	}
+	if _, err := os.Stat(filepath.Join(root, "docs", "AGENT-FRIDGE.md")); err != nil {
+		t.Fatalf("configured door was not rendered: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".fridge", "DOOR.md")); !os.IsNotExist(err) {
+		t.Fatalf("auto-render ignored door.path: %v", err)
+	}
+}
+
+func TestMalformedDoorConfigurationIsRejectedBeforeItCanRedirectAView(t *testing.T) {
+	root := bootstrap(t, "gh-door-shape", "alice")
+	configPath := filepath.Join(root, ".fridge", "config.json")
+	raw, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var original map[string]any
+	if err := json.Unmarshal(raw, &original); err != nil {
+		t.Fatal(err)
+	}
+	originalDoor := original["door"].(map[string]any)
+	cases := []map[string]any{
+		{"path": float64(42), "autoRender": true, "extraTargets": []any{}},
+		{"path": "", "autoRender": true, "extraTargets": []any{}},
+		{"path": ".fridge/DOOR.md", "autoRender": true, "extraTargets": "docs/door.md"},
+		{"path": ".fridge/DOOR.md", "autoRender": true, "extraTargets": []any{"docs/door.md", float64(42)}},
+	}
+	for _, door := range cases {
+		original["door"] = door
+		body, _ := json.MarshalIndent(original, "", "  ")
+		if err := os.WriteFile(configPath, append(body, '\n'), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		result := fridge(t, root, []string{"status", "--json"}, runOpts{Actor: "alice"})
+		if result.Code != 5 || result.JSON.Str("error.code") != "E_STATE_CORRUPT" {
+			t.Fatalf("malformed door config was accepted: exit %d, %s", result.Code, result.Stdout)
+		}
+	}
+	original["door"] = originalDoor
+	body, _ := json.MarshalIndent(original, "", "  ")
+	if err := os.WriteFile(configPath, append(body, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	invalid := fridge(t, root, []string{"config", "door.extraTargets", "docs/door.md", "--json"}, runOpts{Actor: "alice"})
+	if invalid.Code != 2 || invalid.JSON.Str("error.code") != "E_USAGE" {
+		t.Fatalf("non-array extraTargets was accepted: exit %d, %s", invalid.Code, invalid.Stdout)
+	}
+	if result := fridge(t, root, []string{"config", "door.extraTargets", "[\"docs/door.md\"]", "--json"}, runOpts{Actor: "alice"}); result.Code != 0 {
+		t.Fatalf("valid extraTargets array exited %d: %s", result.Code, result.Stdout)
+	}
+	loaded, ok := fsx.ReadJSONSafe(configPath)
+	targets := loaded.Strings("door.extraTargets")
+	if !ok || len(targets) != 1 || targets[0] != "docs/door.md" {
+		t.Fatalf("valid extraTargets array was not stored: %v", loaded.Get("door.extraTargets"))
+	}
+}
+
 func TestASymlinkedOutputPathIsJudgedByWhereItReallyLands(t *testing.T) {
 	root := bootstrap(t, "gh-symlink", "alice")
 	outside := filepath.Join(filepath.Dir(root), filepath.Base(root)+"-outside")
@@ -398,6 +503,237 @@ func TestTheSecretEscapeHatchNamesTheOffendingFlag(t *testing.T) {
 	err := secrets.Guard(map[string]string{"--task": token}, false)
 	if err == nil || !strings.Contains(err.Error(), "--task") {
 		t.Fatalf("the error should name the flag, got %v", err)
+	}
+}
+
+func TestSoleActorInferenceNeverRenewsOrCreatesAMisspelledActor(t *testing.T) {
+	root := bootstrap(t, "gh-ident-read-only", "alice")
+	typo := fridge(t, root, []string{"status", "--agent", "alcie", "--json"}, runOpts{})
+	if typo.Code != 7 {
+		t.Fatalf("misspelled actor exited %d, want 7", typo.Code)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".fridge", "actors", "alcie.json")); !os.IsNotExist(err) {
+		t.Fatalf("a read typo silently joined: %v", err)
+	}
+
+	held := fridge(t, root, []string{"claim", "src/**", "--task", "near expiry", "--json"}, runOpts{Actor: "alice"})
+	leaseFile := filepath.Join(root, ".fridge", "leases", claimIDOf(t, held)+".json")
+	lease := readObj(t, leaseFile)
+	lease["expiresAt"] = util.NowISO(time.Now().Add(5 * time.Second))
+	lease["renewals"] = float64(0)
+	if err := os.WriteFile(leaseFile, []byte(jsonx.Compact(lease)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, _ := os.ReadFile(leaseFile)
+	if c := fridge(t, root, []string{"status", "--json"}, runOpts{}).Code; c != 0 {
+		t.Fatalf("inferred status exited %d", c)
+	}
+	after, _ := os.ReadFile(leaseFile)
+	if string(after) != string(before) {
+		t.Fatal("inferred read-only identity renewed a lease")
+	}
+}
+
+func TestAStaleEnvironmentIdentityDoesNotBlockIdentityFreeAdministration(t *testing.T) {
+	root := bootstrap(t, "gh-ident-stale-env", "alice")
+	for _, args := range [][]string{
+		{"status", "--json"},
+		{"board", "--json"},
+		{"config", "--json"},
+		{"doctor", "--check", "--json"},
+	} {
+		result := fridge(t, root, args, runOpts{Actor: "departed"})
+		if result.Code != 0 {
+			t.Fatalf("%s was blocked by a stale FRIDGE_ACTOR: exit %d, stdout %s, stderr %s",
+				args[0], result.Code, result.Stdout, result.Stderr)
+		}
+	}
+	held := claimIDOf(t, fridge(t, root, []string{"claim", "src/**", "--task", "held", "--json"}, runOpts{Actor: "alice"}))
+	if result := fridge(t, root, []string{"reap", "--dry-run", "--json"}, runOpts{Actor: "departed"}); result.Code != 0 {
+		t.Fatalf("reap --dry-run was blocked by stale FRIDGE_ACTOR: %d, %s", result.Code, result.Stdout)
+	}
+	if result := fridge(t, root, []string{"wait", held, "--timeout", "1ms", "--json"}, runOpts{Actor: "departed"}); result.Code != 21 {
+		t.Fatalf("wait was blocked by stale FRIDGE_ACTOR: %d, %s", result.Code, result.Stdout)
+	}
+	if result := fridge(t, root, []string{"reap", "--dry-run", "--agent", "departed", "--json"}, runOpts{}); result.Code != 7 {
+		t.Fatalf("explicit stale --agent exited %d, want 7", result.Code)
+	}
+}
+
+func TestMigrationIsExplicitConfinedAndSecretScannedBeforeWriting(t *testing.T) {
+	root := bootstrap(t, "gh-migrate-safety", "alice")
+	legacy := filepath.Join(root, "shared-development-updates.md")
+	outside := filepath.Join(filepath.Dir(root), fmt.Sprintf("outside-ledger-%d.md", os.Getpid()))
+	if err := os.WriteFile(legacy, []byte("- ghp_abcdefghijklmnopqrstuvwxyz1234567890\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, []byte("- harmless outside line\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(outside)
+	before := len(notes(t, root))
+
+	inferred := fridge(t, root, []string{"migrate", "--updates", "shared-development-updates.md", "--json"}, runOpts{})
+	if inferred.Code != 7 {
+		t.Fatalf("non-dry migration inherited the sole actor: exit %d, %s", inferred.Code, inferred.Stdout)
+	}
+	if len(notes(t, root)) != before {
+		t.Fatal("identity failure wrote migration notes")
+	}
+
+	dry := fridge(t, root, []string{"migrate", "--updates", "shared-development-updates.md", "--dry-run", "--json"}, runOpts{})
+	if dry.Code != 2 {
+		t.Fatalf("dry-run did not report the secret that blocks import: exit %d", dry.Code)
+	}
+
+	blocked := fridge(t, root, []string{
+		"migrate", "--updates", "shared-development-updates.md", "--freeze", "--json",
+	}, runOpts{Actor: "alice"})
+	if blocked.Code != 2 || blocked.JSON.Str("error.code") != "E_USAGE" {
+		t.Fatalf("secret migration was accepted: exit %d, %s", blocked.Code, blocked.Stdout)
+	}
+	if len(notes(t, root)) != before {
+		t.Fatal("migration wrote notes before validation finished")
+	}
+	raw, _ := os.ReadFile(legacy)
+	if strings.HasPrefix(string(raw), "<!-- FROZEN") {
+		t.Fatal("migration froze the source before validation passed")
+	}
+
+	escaped := fridge(t, root, []string{
+		"migrate", "--updates", "../" + filepath.Base(outside), "--json",
+	}, runOpts{Actor: "alice"})
+	if escaped.Code != 40 || escaped.JSON.Str("error.code") != "E_PATH_INVALID" {
+		t.Fatalf("outside migration path was accepted: exit %d, %s", escaped.Code, escaped.Stdout)
+	}
+
+	emptyDone := filepath.Join(root, "To-do.done.md")
+	if err := os.WriteFile(emptyDone, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	preview := fridge(t, root, []string{
+		"migrate",
+		"--updates", "shared-development-updates.md",
+		"--todo-done", "To-do.done.md",
+		"--allow-secret-like",
+		"--dry-run",
+		"--json",
+	}, runOpts{Actor: "alice"})
+	if preview.Code != 0 {
+		t.Fatalf("migration preview exited %d: %s", preview.Code, preview.Stdout)
+	}
+	gotFiles := map[string]bool{}
+	for _, rawFile := range preview.JSON.ArrAt("data.files") {
+		file, _ := rawFile.(string)
+		gotFiles[file] = true
+	}
+	for _, name := range []string{"shared-development-updates.md", "To-do.done.md"} {
+		if !gotFiles[name] {
+			t.Fatalf("zero-entry migration source %q was omitted: %s", name, preview.Stdout)
+		}
+	}
+
+	allowed := fridge(t, root, []string{
+		"migrate", "--updates", "shared-development-updates.md", "--allow-secret-like", "--json",
+	}, runOpts{Actor: "alice"})
+	if allowed.Code != 0 {
+		t.Fatalf("allow-secret-like did not override scanner: exit %d, %s", allowed.Code, allowed.Stdout)
+	}
+	imported := 0
+	for _, note := range notes(t, root) {
+		if note.Str("type") == "legacy.update" {
+			imported++
+		}
+	}
+	if imported != 1 {
+		t.Fatalf("imported %d legacy notes, want 1", imported)
+	}
+}
+
+func TestMigrationRefusesToFreezeASourceThatChangedAfterPreflight(t *testing.T) {
+	root := bootstrap(t, "gh-migrate-edited", "alice")
+	legacy := filepath.Join(root, "shared-development-updates.md")
+	if err := os.WriteFile(legacy, []byte("- original entry\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := len(notes(t, root))
+	cmd := exec.Command(binary(t),
+		"migrate", "--updates", "shared-development-updates.md", "--freeze", "--json")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(),
+		"FRIDGE_ACTOR=alice",
+		"FRIDGE_TEST=1",
+		"FRIDGE_FAULT=delay-migrate-after-preflight",
+		"NO_COLOR=1",
+	)
+	var output bytes.Buffer
+	cmd.Stdout = &output
+	cmd.Stderr = &output
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(root, ".fridge", "tmp", "migrate-preflight-ready")
+	deadline := time.Now().Add(5 * time.Second)
+	for !fsx.Exists(marker) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !fsx.Exists(marker) {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		t.Fatalf("migration never reached its preflight seam: %s", output.String())
+	}
+	file, err := os.OpenFile(legacy, os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("- concurrent edit\n"); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".fridge", "tmp", "migrate-preflight-continue"), []byte("continue\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err = cmd.Wait()
+	exit := 0
+	if err != nil {
+		if exited, ok := err.(*exec.ExitError); ok {
+			exit = exited.ExitCode()
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if exit != 10 {
+		t.Fatalf("changed-source migration exited %d, want 10: %s", exit, output.String())
+	}
+	raw, err := os.ReadFile(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), "concurrent edit") || strings.HasPrefix(string(raw), "<!-- FROZEN") {
+		t.Fatalf("migration overwrote or froze concurrent edits:\n%s", raw)
+	}
+	if len(notes(t, root)) != before {
+		t.Fatal("migration wrote notes before detecting the changed source")
+	}
+}
+
+func TestMigrationRejectsASourceLargerThanItsBoundedMutexBudget(t *testing.T) {
+	root := bootstrap(t, "gh-migrate-size", "alice")
+	legacy := filepath.Join(root, "shared-development-updates.md")
+	if err := os.WriteFile(legacy, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(legacy, 10*1024*1024+1); err != nil {
+		t.Fatal(err)
+	}
+	result := fridge(t, root, []string{
+		"migrate", "--updates", "shared-development-updates.md", "--dry-run", "--json",
+	}, runOpts{})
+	if result.Code != 2 || !strings.Contains(result.JSON.Str("error.message"), "10 MiB") {
+		t.Fatalf("oversized migration source was accepted: exit %d, %s", result.Code, result.Stdout)
 	}
 }
 

@@ -102,6 +102,17 @@ type Options struct {
 // With runs fn while holding the registry mutex. The lock is a directory, so
 // creation is atomic on POSIX, Windows and NFS alike.
 func With(ws Env, op string, fn func() error, opts *Options) error {
+	return withRenewable(ws, op, func(_ func() error) error { return fn() }, opts)
+}
+
+// WithRenewable gives a long bounded operation a generation-fenced refresh
+// function. Call it between bounded mutations so a live holder never ages past
+// staleMs and gets replaced while it is still writing.
+func WithRenewable(ws Env, op string, fn func(refresh func() error) error, opts *Options) error {
+	return withRenewable(ws, op, fn, opts)
+}
+
+func withRenewable(ws Env, op string, fn func(refresh func() error) error, opts *Options) error {
 	lockDir := ws.MutexDir()
 	ownerFile := filepath.Join(lockDir, "owner.json")
 	limit := ws.AcquireTimeoutMs()
@@ -189,15 +200,17 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 			if ws.SessionID() != "" {
 				sess = ws.SessionID()
 			}
+			acquiredAt := util.Now()
 			if e := fsx.WriteJSONAtomic(ownerFile, jsonx.Obj{
-				"acquiredAt": util.Now(),
-				"host":       util.HostID(),
-				"nonce":      nonce,
-				"op":         op,
-				"pid":        float64(os.Getpid()),
-				"schema":     "wcp/0.1/mutex-owner",
-				"sessionId":  sess,
-				"writer":     brand.Writer,
+				"acquiredAt":  acquiredAt,
+				"heartbeatAt": acquiredAt,
+				"host":        util.HostID(),
+				"nonce":       nonce,
+				"op":          op,
+				"pid":         float64(os.Getpid()),
+				"schema":      "wcp/0.1/mutex-owner",
+				"sessionId":   sess,
+				"writer":      brand.Writer,
 			}, ws.TmpDir()); e != nil {
 				if !dropLockOnce(lockDir, ownerFile) {
 					dismantleLockInPlace(lockDir, ownerFile)
@@ -246,8 +259,7 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 				}
 			}
 		} else {
-			acquiredMs, _ := util.ParseMs(owner.Str("acquiredAt"))
-			age := util.NowMs() - acquiredMs
+			age := util.NowMs() - ownerActivityMs(owner)
 			key = ownerKey(owner)
 			if owner.Str("host") == util.HostID() && !util.ProcessAlive(owner.Int("pid")) {
 				breakIt = true
@@ -327,7 +339,66 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 			"Another process broke this lock while we were taking it.").
 			WithHint("Retry. If it keeps happening, raise mutex.staleMs in .fridge/config.json")
 	}
-	return fn()
+	refresh := func() error {
+		deadline := util.NowMs() + int64(releaseTimeoutMs)
+		for {
+			lost := false
+			var writeErr error
+			entered, renewed := withBreakLock(lockDir, stale, func() bool {
+				current, ok := fsx.ReadJSONSafe(ownerFile)
+				if !ok || current.Str("nonce") != nonce {
+					lost = true
+					return false
+				}
+				current["heartbeatAt"] = util.Now()
+				if err := fsx.WriteJSONAtomic(ownerFile, current, ws.TmpDir()); err != nil {
+					writeErr = err
+					return false
+				}
+				return true
+			})
+			if writeErr != nil {
+				return errs.New("E_STATE_CORRUPT", "Could not refresh the registry lock: "+writeErr.Error()).
+					WithHint("Check permissions on .fridge/locks and .fridge/tmp.")
+			}
+			if entered && renewed {
+				return nil
+			}
+			if entered && lost {
+				return errs.New("E_MUTEX_TIMEOUT", "Another process broke this lock while the operation was still running.").
+					WithHint("Retry. If it keeps happening, raise mutex.staleMs in .fridge/config.json")
+			}
+			if util.NowMs() >= deadline {
+				return errs.New("E_MUTEX_TIMEOUT", "Could not refresh the registry mutex before the deadline.").
+					WithHint("Retry, or run: fridge doctor --fix")
+			}
+			util.Sleep(2)
+		}
+	}
+	return fn(refresh)
+}
+
+// BreakIfRecoverable performs doctor-style recovery through the same
+// generation-fenced breaker used by normal mutex acquisition.
+func BreakIfRecoverable(ws Env) bool {
+	lockDir := ws.MutexDir()
+	ownerFile := filepath.Join(lockDir, "owner.json")
+	owner, ownerOK := fsx.ReadJSONSafe(ownerFile)
+	stale := ws.StaleMs()
+	key := "unreadable"
+	recoverable := false
+	if ownerOK {
+		key = ownerKey(owner)
+		recoverable = (owner.Str("host") == util.HostID() && !util.ProcessAlive(owner.Int("pid"))) ||
+			util.NowMs()-ownerActivityMs(owner) > int64(stale)
+	} else if st, err := statLock(lockDir); err == nil {
+		key = fmt.Sprintf("unreadable@%d", st.ModTime().UnixMilli())
+		recoverable = util.NowMs()-st.ModTime().UnixMilli() > int64(stale)
+	}
+	if !recoverable {
+		return false
+	}
+	return breakLock(lockDir, ownerFile, key, ownerOK, stale)
 }
 
 // breakLock removes a lock that a waiter has judged to be dead.
@@ -400,10 +471,26 @@ func breakLockLocked(lockDir, ownerFile, key string, ownerOK bool) bool {
 	return true
 }
 
-// ownerKey identifies one specific tenancy of the lock, so a waiter can tell
-// "the holder I judged" from "whoever holds it now".
+// ownerKey identifies the exact owner snapshot a waiter judged, including its
+// latest heartbeat.
 func ownerKey(owner jsonx.Obj) string {
-	return fmt.Sprintf("%s|%d|%s|%s", owner.Str("host"), owner.Int("pid"), owner.Str("acquiredAt"), owner.Str("nonce"))
+	heartbeat := owner.Str("heartbeatAt")
+	if heartbeat == "" {
+		heartbeat = owner.Str("acquiredAt")
+	}
+	return fmt.Sprintf("%s|%d|%s|%s|%s",
+		owner.Str("host"), owner.Int("pid"), owner.Str("acquiredAt"), heartbeat, owner.Str("nonce"))
+}
+
+func ownerActivityMs(owner jsonx.Obj) int64 {
+	for _, key := range []string{"heartbeatAt", "acquiredAt"} {
+		if value := owner.Str(key); value != "" {
+			if ms, ok := util.ParseMs(value); ok {
+				return ms
+			}
+		}
+	}
+	return 0
 }
 
 func errCode(err error) string {

@@ -8,7 +8,10 @@ import (
 
 	"github.com/RagnarPitla/agent-fridge/internal/brand"
 	"github.com/RagnarPitla/agent-fridge/internal/errs"
+	"github.com/RagnarPitla/agent-fridge/internal/mutex"
 	"github.com/RagnarPitla/agent-fridge/internal/output"
+	"github.com/RagnarPitla/agent-fridge/internal/render"
+	"github.com/RagnarPitla/agent-fridge/internal/store"
 )
 
 // Flags holds parsed flag values: bool, string, or []string.
@@ -348,6 +351,41 @@ func Main(argv []string, stdout, stderr writer) int {
 
 type writer = interface{ Write([]byte) (int, error) }
 
+func renewForInvocation(ctx *Ctx) error {
+	explicit := ctx.Flags.Str("agent")
+	if explicit == "" {
+		explicit = os.Getenv("FRIDGE_ACTOR")
+	}
+	if explicit == "" || ctx.Command == "init" || ctx.Command == "join" || ctx.Command == "version" || ctx.Command == "conform" {
+		return nil
+	}
+	ws, err := open(ctx)
+	if err != nil {
+		return nil // the command reports workspace errors through its normal path
+	}
+	_, session, err := store.RequireActor(ws, explicit, "")
+	if err != nil {
+		if ctx.Flags.Str("agent") != "" {
+			return err
+		}
+		if app := errs.As(err); app != nil && app.Code == "E_NO_SESSION" {
+			return nil // stale environment identity
+		}
+		return err
+	}
+	if os.Getenv("FRIDGE_NO_RENEW") == "1" {
+		return nil
+	}
+	_ = mutex.With(ws, "renew", func() error {
+		renewed, err := store.RenewOwnLeases(ws, session)
+		if err == nil && len(renewed) > 0 {
+			render.Auto(ws)
+		}
+		return err
+	}, nil)
+	return nil
+}
+
 func run(ctx *Ctx, argv []string) (int, error) {
 	parsed, err := ParseArgs(argv)
 	if err != nil {
@@ -407,6 +445,9 @@ func run(ctx *Ctx, argv []string) (int, error) {
 	}
 	if os.Getenv("FRIDGE_FAULT") != "" && os.Getenv("FRIDGE_TEST") != "1" {
 		return 0, errs.New("E_USAGE", "FRIDGE_FAULT is only honoured when FRIDGE_TEST=1.")
+	}
+	if err := renewForInvocation(ctx); err != nil {
+		return 0, err
 	}
 	return spec.Fn(ctx)
 }

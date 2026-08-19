@@ -1,6 +1,6 @@
 {
   "name": "agent-fridge",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "The shared whiteboard for AI coding agents. Atomic path claims, leases, write-once notes and handoffs so several agents and humans work in one Git checkout without overwriting each other. Local-first, zero dependencies, model-neutral.",
   "keywords": [
     "ai-agents",
@@ -71,6 +71,6 @@
     "go:fmt": "node tools/go.mjs fmt",
     "go:dist": "node tools/go.mjs dist",
     "parity": "node tools/parity.mjs",
-    "conform": "node tools/go.mjs run ./cmd/fridge -- conform"
+    "conform": "node tools/go.mjs run ./cmd/fridge conform"
   }
 }

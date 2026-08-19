@@ -6,6 +6,7 @@ import { AppError } from './errors.mjs';
 import {
   createJsonExclusive, ensureDir, exists, listJson, readJsonSafe, walkJson, writeAtomic, writeJsonAtomic,
 } from './fsx.mjs';
+import { resolveInsideWorkspace } from './paths.mjs';
 import { compactTs, hostId, newId, nowIso, processAlive, slug, stableStringify } from './util.mjs';
 import { PRODUCT, PROTOCOL, STATE_DIR, WRITER } from '../brand.mjs';
 
@@ -91,7 +92,30 @@ export function openWorkspace({ repo, cwd = process.cwd(), requireInit = true } 
   const loaded = readJsonSafe(paths.config);
   if (!loaded.ok) throw new AppError('E_STATE_CORRUPT', `Unreadable config: ${paths.config}`, { hint: 'fridge doctor --fix' });
   const config = deepMerge(DEFAULT_CONFIG(loaded.value.workspaceId || newId('wsp')), loaded.value);
+  paths.door = validateDoorConfig(root, config);
   return { root, paths, initialized: true, config, cwd, version: versionRaw };
+}
+
+export function validateDoorConfig(root, config, { shapeCode = 'E_STATE_CORRUPT' } = {}) {
+  const invalid = (message) => {
+    throw new AppError(shapeCode, message, shapeCode === 'E_STATE_CORRUPT' ? { hint: 'Fix .fridge/config.json or run fridge doctor --fix.' } : {});
+  };
+  if (!config?.door || typeof config.door !== 'object' || Array.isArray(config.door)) {
+    invalid('Config key door must be an object.');
+  }
+  if (typeof config.door.path !== 'string' || !config.door.path.trim()) {
+    invalid('Config key door.path must be a non-empty string.');
+  }
+  if (!Array.isArray(config.door.extraTargets)) {
+    invalid('Config key door.extraTargets must be an array of non-empty strings.');
+  }
+  for (const target of config.door.extraTargets) {
+    if (typeof target !== 'string' || !target.trim()) {
+      invalid('Config key door.extraTargets must be an array of non-empty strings.');
+    }
+    resolveInsideWorkspace(root, target, 'door.extraTargets entry');
+  }
+  return resolveInsideWorkspace(root, config.door.path, 'door.path');
 }
 
 /**
@@ -257,7 +281,7 @@ export function renewOwnLeases(ws, session) {
   if (!ws.config?.lease?.renewOnAnyCommand) return [];
   const ratio = ws.config.lease.renewThresholdRatio;
   const renewed = [];
-  for (const d of listClaims(ws, { tolerateCorrupt: true })) {
+  for (const d of listClaims(ws)) {
     const c = d.claim;
     if (c.sessionId !== session.id) continue;
     if (d.stale) continue;
@@ -269,21 +293,21 @@ export function renewOwnLeases(ws, session) {
   return renewed;
 }
 
-export function requireActor(ws, { agent, vendor, mutating = false, renew = true } = {}) {
+export function requireActor(ws, { agent, mutating = false } = {}) {
   const name = resolveActorName(ws, agent, { mutating });
   const actor = readActor(ws, name);
   if (!actor) {
-    if (agent || process.env.FRIDGE_ACTOR) return joinActor(ws, { name, vendor });
     throw new AppError('E_NO_SESSION', `No housemate named '${name}' on this door.`, { hint: `fridge join --agent ${name}` });
   }
-  let session = readSession(ws, actor.currentSessionId);
-  if (!session) ({ session } = joinActor(ws, { name, vendor: actor.vendor }));
+  const session = readSession(ws, actor.currentSessionId);
+  if (!session) {
+    throw new AppError('E_NO_SESSION', `${actor.name} has no current session on this door.`, {
+      hint: `fridge join --agent ${actor.name} --vendor ${actor.vendor}`,
+    });
+  }
   ws.actor = actor;
   ws.session = session;
   ws.sessionId = session.id;
-  if (renew) {
-    try { ws.renewed = renewOwnLeases(ws, session); } catch { /* renewal must never be the thing that fails a command */ }
-  }
   return { actor, session };
 }
 

@@ -21,6 +21,7 @@ const ambiguousPairs = [
   { label: 'star-vs-question', targets: ['src/*.ts', 'src/a?.ts'], witness: 'src/ab.ts' },
   { label: 'brace-vs-literal', targets: ['{src,docs}/**', 'docs/adr-0003.md'], witness: 'docs/adr-0003.md' },
   { label: 'overlapping-classes', targets: ['src/[ab]/x.ts', 'src/[bc]/x.ts'], witness: 'src/b/x.ts' },
+  { label: 'range-vs-literal', targets: ['[a-z].md', 'b.md'], witness: 'b.md' },
 ];
 
 for (const { label, targets, witness } of ambiguousPairs) {

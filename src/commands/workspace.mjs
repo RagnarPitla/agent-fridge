@@ -4,13 +4,15 @@ import path from 'node:path';
 import { AppError, EXIT } from '../core/errors.mjs';
 import { emit } from '../core/output.mjs';
 import { exists, writeJsonAtomic, writeAtomic } from '../core/fsx.mjs';
-import { nowIso, slug } from '../core/util.mjs';
+import { nowIso, sleep, slug } from '../core/util.mjs';
 import {
   ensureGitAttributes, initWorkspace, joinActor, listActors, listClaims, openWorkspace, pin, readActor,
-  requireActor, resolveActorName, statePaths, writeGitignore,
+  requireActor, statePaths, validateDoorConfig, writeGitignore,
 } from '../core/store.mjs';
 import { autoRender, renderDoor } from '../core/render.mjs';
 import { withMutex } from '../core/mutex.mjs';
+import { resolveInsideWorkspace } from '../core/paths.mjs';
+import { guardSecrets } from '../core/secrets.mjs';
 import * as adapterTemplates from '../adapters/templates.mjs';
 import { BIN, PACKAGE, PRODUCT, PROTOCOL, STATE_DIR, VERSION } from '../brand.mjs';
 
@@ -130,6 +132,13 @@ export async function config(ctx) {
   } else if (typeof current === 'boolean') {
     if (!['true', 'false'].includes(value)) throw new AppError('E_USAGE', `Config key '${key}' needs true or false.`);
     parsed = value === 'true';
+  } else if (Array.isArray(current)) {
+    try {
+      parsed = JSON.parse(value);
+    } catch {
+      throw new AppError('E_USAGE', `Config key '${key}' needs a JSON array.`);
+    }
+    if (!Array.isArray(parsed)) throw new AppError('E_USAGE', `Config key '${key}' needs a JSON array.`);
   }
   // Re-read inside the mutex and write back only the one key. Two terminals
   // each setting a different key from a copy they read a second ago would
@@ -139,6 +148,7 @@ export async function config(ctx) {
     const fresh = openWorkspace({ repo: ws.root, cwd: ctx.cwd });
     const was = getPath(fresh.config, key);
     setPath(fresh.config, key, parsed);
+    fresh.paths.door = validateDoorConfig(fresh.root, fresh.config, { shapeCode: 'E_USAGE' });
     writeJsonAtomic(fresh.paths.config, fresh.config, fresh.paths.tmp);
     // notes.commit is only real if the ignore file agrees with it.
     if (key === 'notes.commit') writeGitignore(fresh);
@@ -177,6 +187,7 @@ export async function adapters(ctx) {
 }
 
 const LEGACY = { todo: 'To-do.done.md', updates: 'shared-development-updates.md' };
+const MAX_MIGRATION_SOURCE_BYTES = 10 * 1024 * 1024;
 
 function parseLegacy(text, file) {
   // Deliberately dumb: one note per bullet or heading, in file order. No cleverness,
@@ -231,7 +242,13 @@ function attributeEntry(entry, { authorMap, knownActors, fallback }) {
 
 export async function migrate(ctx) {
   const ws = openWorkspace({ repo: ctx.flags.repo, cwd: ctx.cwd });
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const dryRun = Boolean(ctx.flags['dry-run']);
+  const explicit = ctx.flags.agent || process.env.FRIDGE_ACTOR;
+  const { actor, session } = requireActor(ws, {
+    agent: dryRun ? ctx.flags.agent : explicit,
+    vendor: ctx.flags.vendor,
+    mutating: !dryRun,
+  });
   const authorMap = parseAuthorMap(ctx.flags['author-map']);
   const knownActors = new Map();
   for (const a of listActors(ws)) { knownActors.set(a.name.toLowerCase(), a); knownActors.set(a.slug.toLowerCase(), a); }
@@ -245,18 +262,62 @@ export async function migrate(ctx) {
       hint: `${BIN} migrate --todo-done <file> --updates <file>`,
     });
   }
-  const dryRun = Boolean(ctx.flags['dry-run']);
   const imported = [];
+  const prepared = [];
+  const preparedTargets = [];
   for (const t of targets) {
-    const abs = path.join(ws.root, t.rel);
+    const abs = resolveInsideWorkspace(ws.root, path.resolve(ws.root, t.rel), t.kind);
+    const rel = path.relative(ws.root, abs).split(path.sep).join('/');
     let raw;
+    let size;
+    try { size = fs.statSync(abs).size; } catch (e) {
+      throw new AppError('E_NOT_FOUND', `Cannot read ${t.rel}: ${e.code}`);
+    }
+    if (size > MAX_MIGRATION_SOURCE_BYTES) {
+      throw new AppError('E_USAGE', `${rel} is larger than the 10 MiB migration limit.`, {
+        hint: 'Split the legacy Markdown into smaller files and migrate them separately.',
+      });
+    }
     try { raw = fs.readFileSync(abs, 'utf8'); } catch (e) {
       throw new AppError('E_NOT_FOUND', `Cannot read ${t.rel}: ${e.code}`);
     }
-    const entries = parseLegacy(raw, t.rel);
+    guardSecrets({ [rel]: raw }, { allow: Boolean(ctx.flags['allow-secret-like']) });
+    preparedTargets.push({ ...t, rel, abs, raw });
+    const entries = parseLegacy(raw, rel);
     for (const e of entries) {
       const { actor: credited, detected } = attributeEntry(e, { authorMap, knownActors, fallback: actor });
-      if (!dryRun) {
+      prepared.push({ target: preparedTargets.at(-1), entry: e, credited, detected });
+      imported.push({ file: rel, heading: e.heading, attributedTo: credited.name, summary: e.body.split('\n')[0].slice(0, 120) });
+    }
+  }
+  if (!dryRun) {
+    if (process.env.FRIDGE_TEST === '1' && process.env.FRIDGE_FAULT === 'delay-migrate-after-preflight') {
+      fs.writeFileSync(path.join(ws.paths.tmp, 'migrate-preflight-ready'), 'ready\n');
+      const deadline = Date.now() + 5000;
+      while (!exists(path.join(ws.paths.tmp, 'migrate-preflight-continue'))) {
+        if (Date.now() >= deadline) throw new AppError('E_INTERNAL', 'Timed out waiting at the migration test seam.');
+        await sleep(10);
+      }
+    }
+    const assertUnchanged = (target) => {
+      let current;
+      try { current = fs.readFileSync(target.abs, 'utf8'); } catch (error) {
+        throw new AppError('E_NOT_FOUND', `Cannot reread ${target.rel}: ${error.code}`);
+      }
+      if (current !== target.raw) {
+        throw new AppError('E_CONFLICT', `${target.rel} changed while migration was preparing.`, {
+          hint: 'Review the new edits, then run fridge migrate again.',
+          details: { file: target.rel },
+        });
+      }
+    };
+    await withMutex(ws, 'migrate', (refresh) => {
+      for (const target of preparedTargets) {
+        refresh();
+        assertUnchanged(target);
+      }
+      for (const { target: t, entry: e, credited, detected } of prepared) {
+        refresh();
         pin(ws, {
           type: t.kind, actor: credited, session,
           subject: { kind: 'file', id: t.rel },
@@ -268,24 +329,31 @@ export async function migrate(ctx) {
           },
         });
       }
-      imported.push({ file: t.rel, heading: e.heading, attributedTo: credited.name, summary: e.body.split('\n')[0].slice(0, 120) });
-    }
-    if (!dryRun && ctx.flags.freeze) {
-      const banner = [
-        '<!-- FROZEN by fridge migrate.',
-        `     Imported into ${STATE_DIR}/notes/ on ${nowIso()} by ${actor.name}.`,
-        `     Do not edit this file. Pin notes with: ${BIN} pin "..."`,
-        `     Read history with: ${BIN} log -->`,
-        '',
-      ].join('\n');
-      if (!raw.startsWith('<!-- FROZEN')) writeAtomic(abs, banner + raw, ws.paths.tmp);
-    }
+      if (ctx.flags.freeze) {
+        for (const t of preparedTargets) {
+          refresh();
+          assertUnchanged(t);
+          const banner = [
+            '<!-- FROZEN by fridge migrate.',
+            `     Imported into ${STATE_DIR}/notes/ on ${nowIso()} by ${actor.name}.`,
+            `     Do not edit this file. Pin notes with: ${BIN} pin "..."`,
+            `     Read history with: ${BIN} log -->`,
+            '',
+          ].join('\n');
+          if (!t.raw.startsWith('<!-- FROZEN')) writeAtomic(t.abs, banner + t.raw, ws.paths.tmp);
+        }
+      }
+    });
   }
   if (!dryRun) autoRender(ws);
+  const files = [...new Set(preparedTargets.map((target) => target.rel))];
   const text = [
-    `${dryRun ? 'Would import' : 'Imported'} ${imported.length} entr(ies) from ${targets.map((t) => t.rel).join(', ')}.`,
+    `${dryRun ? 'Would import' : 'Imported'} ${imported.length} entr(ies) from ${files.join(', ')}.`,
     ctx.flags.freeze && !dryRun ? 'Legacy files marked FROZEN. They are now read-only history.' : '',
     dryRun ? '' : `Read them back with: ${BIN} log --limit ${Math.min(imported.length, 50)}`,
   ].filter(Boolean).join('\n');
-  return emit(ctx, 'migrate', { data: { dryRun, count: imported.length, entries: imported.slice(0, 200), files: targets.map((t) => t.rel) }, text });
+  return emit(ctx, 'migrate', {
+    data: { dryRun, count: imported.length, entries: imported.slice(0, 200), files },
+    text,
+  });
 }

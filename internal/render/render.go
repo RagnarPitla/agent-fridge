@@ -117,6 +117,8 @@ func StateKeyOf(s jsonx.Obj) string {
 // StateKeyRE finds the recorded state hash inside a generated view.
 var StateKeyRE = regexp.MustCompile(`state:([0-9a-f]{12})`)
 
+var afterAutoWrite = func(*store.Workspace, int) {}
+
 // Drift is decided by the recorded state key, never by diffing rendered text.
 func Drift(ws *store.Workspace, text string) (drift bool, found, want string) {
 	m := StateKeyRE.FindStringSubmatch(text)
@@ -253,8 +255,15 @@ func Auto(ws *store.Workspace) bool {
 	if !ws.Config.Bool("door.autoRender") {
 		return false
 	}
-	if err := fsx.WriteAtomic(ws.Paths.Door, Door(ws), ws.Paths.Tmp); err != nil {
-		return false
+	for attempt := 0; attempt < 3; attempt++ {
+		captured := Snapshot(ws)
+		if err := fsx.WriteAtomic(ws.Paths.Door, DoorFrom(captured), ws.Paths.Tmp); err != nil {
+			return false
+		}
+		afterAutoWrite(ws, attempt)
+		if StateKey(ws) == StateKeyOf(captured) {
+			return true
+		}
 	}
-	return true
+	return false
 }

@@ -82,7 +82,8 @@ Behaviour, from `src/commands/workspace.mjs`:
 1. **It finds the files.** With no flags it looks for `To-do.done.md` and
    `shared-development-updates.md` in the workspace root. `--todo-done <file>`
    and `--updates <file>` override those paths. If neither file is found it
-   exits `11` (`E_NOT_FOUND`) and tells you the flags.
+   exits `11` (`E_NOT_FOUND`) and tells you the flags. Explicit source paths
+   must remain inside the workspace after symlink resolution.
 
 2. **It parses deliberately dumbly.** One entry per Markdown bullet (`-` or `*`)
    or per block of prose under a heading, in file order. The nearest preceding
@@ -90,7 +91,14 @@ Behaviour, from `src/commands/workspace.mjs`:
    parse dates, infer status, or restructure anything. Guessing wrong about
    somebody's history is worse than importing it verbatim, so it does not guess.
 
-3. **It writes one immutable note per entry.** Each entry becomes its own
+3. **It prepares and scans everything before writing.** The full source text is
+   checked by the same secret heuristic as `fridge pin`, including during
+   `--dry-run`, so the preview predicts whether the real import will be
+   accepted. Fix the source or pass `--allow-secret-like` deliberately. Each
+   source is capped at 10 MiB so every mutation performed under the registry
+   mutex remains bounded.
+
+4. **It writes one immutable note per entry.** Each entry becomes its own
    write-once file under `.fridge/notes/YYYY/MM/DD/`, with:
    - `type`: `legacy.todo` for entries from the to-do file, `legacy.update` for
      entries from the updates file.
@@ -100,9 +108,19 @@ Behaviour, from `src/commands/workspace.mjs`:
    - `data.heading`: the Markdown heading the entry sat under.
    - `data.sourceFile`, `data.importedAt`, `data.importedBy`.
 
-4. **It leaves the originals on disk.** Migration never deletes your files. With
+5. **It leaves the originals on disk.** Migration never deletes your files. With
    `--freeze` it prepends a header pointing readers at the new home; without
-   `--freeze` it does not touch them at all.
+   `--freeze` it does not touch them at all. Note creation and optional freezing
+   happen together under the registry mutex after all inputs have passed
+   preflight. The sources are re-read after the mutex is acquired and again
+   immediately before freezing. If somebody edited one after preflight,
+   migration stops with `E_CONFLICT` instead of overwriting the newer text.
+   Long imports refresh their fenced mutex heartbeat between note writes, so a
+   live migration cannot be mistaken for an abandoned lock.
+
+A real migration requires explicit `--agent` or `FRIDGE_ACTOR`; it never
+attributes durable history through sole-actor inference. `--dry-run` is
+read-only and may use the sole actor only to preview attribution.
 
 ### Attribution: read this before you run it
 

@@ -131,16 +131,17 @@ func TestVectorsScopeOverlap(t *testing.T) {
 	doc := loadVectors(t, "scope-overlap.json")
 	for _, raw := range doc.Cases {
 		var c struct {
-			Name    string   `json:"name"`
-			A       []string `json:"a"`
-			B       []string `json:"b"`
-			Overlap bool     `json:"overlap"`
-			Reason  string   `json:"reason"`
+			Name        string   `json:"name"`
+			A           []string `json:"a"`
+			B           []string `json:"b"`
+			Overlap     bool     `json:"overlap"`
+			Reason      string   `json:"reason"`
+			Insensitive bool     `json:"insensitive"`
 		}
 		if err := json.Unmarshal(raw, &c); err != nil {
 			t.Fatal(err)
 		}
-		got, err := ScopesOverlap(Scope{Include: c.A, Exclude: []string{}}, Scope{Include: c.B, Exclude: []string{}}, false)
+		got, err := ScopesOverlap(Scope{Include: c.A, Exclude: []string{}}, Scope{Include: c.B, Exclude: []string{}}, c.Insensitive)
 		if err != nil {
 			t.Errorf("%s: unexpected error %v", c.Name, err)
 			continue

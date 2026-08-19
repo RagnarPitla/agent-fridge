@@ -305,6 +305,80 @@
       "note": "A negated class excludes a finite set from an unbounded alphabet. Answering 'may collide' is the safe direction."
     },
     {
+      "name": "a character range collides with one of its literals",
+      "a": [
+        "[a-z].md"
+      ],
+      "b": [
+        "b.md"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection"
+    },
+    {
+      "name": "numeric ranges collide with digits they contain",
+      "a": [
+        "build/[0-9].json"
+      ],
+      "b": [
+        "build/7.json"
+      ],
+      "overlap": true,
+      "reason": "literal-prefix-nesting"
+    },
+    {
+      "name": "disjoint character ranges stay disjoint",
+      "a": [
+        "[a-f].md"
+      ],
+      "b": [
+        "[x-z].md"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "overlapping character ranges collide",
+      "a": [
+        "[a-m].md"
+      ],
+      "b": [
+        "[h-z].md"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection"
+    },
+    {
+      "name": "a negated range excludes a literal inside it",
+      "a": [
+        "[!a-z].md"
+      ],
+      "b": [
+        "b.md"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "a negated range includes a literal outside it",
+      "a": [
+        "[!a-z].md"
+      ],
+      "b": [
+        "7.md"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection"
+    },
+    {
+      "name": "a positive range and its exact negation are disjoint",
+      "a": [
+        "[a-z].md"
+      ],
+      "b": [
+        "[!a-z].md"
+      ],
+      "overlap": false
+    },
+    {
       "name": "brace alternatives collide if any branch does",
       "a": [
         "{src,docs}/**"
@@ -356,6 +430,127 @@
         "README.md.bak"
       ],
       "overlap": false
+    },
+    {
+      "name": "case-insensitive range folding preserves interior uppercase characters",
+      "a": [
+        "src/[C-g].ts"
+      ],
+      "b": [
+        "src/[x-z].ts"
+      ],
+      "insensitive": true,
+      "overlap": true
+    },
+    {
+      "name": "case-insensitive mixed punctuation and letters still intersect",
+      "a": [
+        "src/[b-g].ts"
+      ],
+      "b": [
+        "src/[1-_].ts"
+      ],
+      "insensitive": true,
+      "overlap": true
+    },
+    {
+      "name": "case-insensitive range and its exact negation are disjoint",
+      "a": [
+        "src/[A-Z].ts"
+      ],
+      "b": [
+        "src/[!a-z].ts"
+      ],
+      "insensitive": true,
+      "overlap": false
+    },
+    {
+      "name": "case-insensitive multi-range class and complement are disjoint",
+      "a": [
+        "src/[a-cX].ts"
+      ],
+      "b": [
+        "src/[!a-cX].ts"
+      ],
+      "insensitive": true,
+      "overlap": false
+    },
+    {
+      "name": "case-insensitive excluded ranges are normalized before complement checks",
+      "a": [
+        "src/[_].ts"
+      ],
+      "b": [
+        "src/[!A-Z_].ts"
+      ],
+      "insensitive": true,
+      "overlap": false
+    },
+    {
+      "name": "case-insensitive disjoint ASCII ranges remain disjoint",
+      "a": [
+        "src/[a-f].ts"
+      ],
+      "b": [
+        "src/[x-z].ts"
+      ],
+      "insensitive": true,
+      "overlap": false
+    },
+    {
+      "name": "case-insensitive non-ASCII class comparison fails safe",
+      "a": [
+        "src/[\u00c0-\u00d6].ts"
+      ],
+      "b": [
+        "src/[x-z].ts"
+      ],
+      "insensitive": true,
+      "overlap": true
+    },
+    {
+      "name": "case-insensitive Unicode simple fold matches a class to a literal",
+      "a": [
+        "src/[K].ts"
+      ],
+      "b": [
+        "src/\u212a.ts"
+      ],
+      "insensitive": true,
+      "overlap": true
+    },
+    {
+      "name": "case-insensitive Unicode simple fold respects a negated class",
+      "a": [
+        "src/[!K].ts"
+      ],
+      "b": [
+        "src/\u212a.ts"
+      ],
+      "insensitive": true,
+      "overlap": false
+    },
+    {
+      "name": "case-insensitive Unicode simple fold handles the Angstrom sign",
+      "a": [
+        "src/[\u00c5].ts"
+      ],
+      "b": [
+        "src/\u212b.ts"
+      ],
+      "insensitive": true,
+      "overlap": true
+    },
+    {
+      "name": "case-insensitive Unicode simple fold matches literal sigma forms",
+      "a": [
+        "src/\u03c3.ts"
+      ],
+      "b": [
+        "src/\u03c2.ts"
+      ],
+      "insensitive": true,
+      "overlap": true
     }
   ]
 }

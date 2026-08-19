@@ -7,6 +7,7 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +33,7 @@ var (
 var reservedRoots = []string{".fridge", ".git"}
 
 const isWindows = runtime.GOOS == "windows"
+const maxBraceExpansions = 256
 
 // CaseFold lowercases only when the workspace is configured case-insensitive.
 func CaseFold(s string, insensitive bool) string {
@@ -81,56 +83,62 @@ func IsPrefixPath(a, b string) bool {
 }
 
 // ExpandBraces turns {a,b} alternation into concrete patterns before matching.
-// Nesting is allowed; an unterminated brace is refused rather than guessed.
+// Nesting is allowed, but output is bounded while it is generated so a brace
+// bomb never allocates its full exponential expansion before being refused.
 func ExpandBraces(pattern string) ([]string, error) {
-	open := strings.IndexByte(pattern, '{')
-	if open == -1 {
-		return []string{pattern}, nil
-	}
-	depth := 0
-	close := -1
-	for i := open; i < len(pattern); i++ {
-		if pattern[i] == '{' {
-			depth++
-		} else if pattern[i] == '}' {
-			depth--
-			if depth == 0 {
-				close = i
-				break
+	out := []string{}
+	var visit func(string) error
+	visit = func(value string) error {
+		open := strings.IndexByte(value, '{')
+		if open == -1 {
+			if len(out) >= maxBraceExpansions {
+				return errs.New("E_PATH_INVALID",
+					fmt.Sprintf("Pattern expands to more than %d alternatives: %s", maxBraceExpansions, pattern)).
+					WithHint("Split it into separate claims.")
+			}
+			out = append(out, value)
+			return nil
+		}
+		depth := 0
+		close := -1
+		for i := open; i < len(value); i++ {
+			if value[i] == '{' {
+				depth++
+			} else if value[i] == '}' {
+				depth--
+				if depth == 0 {
+					close = i
+					break
+				}
 			}
 		}
+		if close == -1 {
+			return errs.New("E_PATH_INVALID", "Unterminated brace in pattern: "+pattern)
+		}
+		head := value[:open]
+		tail := value[close+1:]
+		body := value[open+1 : close]
+		nested := 0
+		start := 0
+		for i, ch := range body {
+			switch ch {
+			case '{':
+				nested++
+			case '}':
+				nested--
+			case ',':
+				if nested == 0 {
+					if err := visit(head + body[start:i] + tail); err != nil {
+						return err
+					}
+					start = i + 1
+				}
+			}
+		}
+		return visit(head + body[start:] + tail)
 	}
-	if close == -1 {
-		return nil, errs.New("E_PATH_INVALID", "Unterminated brace in pattern: "+pattern)
-	}
-	head := pattern[:open]
-	tail := pattern[close+1:]
-	body := pattern[open+1 : close]
-	parts := []string{}
-	depth2 := 0
-	cur := strings.Builder{}
-	for _, ch := range body {
-		if ch == '{' {
-			depth2++
-		}
-		if ch == '}' {
-			depth2--
-		}
-		if ch == ',' && depth2 == 0 {
-			parts = append(parts, cur.String())
-			cur.Reset()
-		} else {
-			cur.WriteRune(ch)
-		}
-	}
-	parts = append(parts, cur.String())
-	out := []string{}
-	for _, p := range parts {
-		sub, err := ExpandBraces(head + p + tail)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, sub...)
+	if err := visit(pattern); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

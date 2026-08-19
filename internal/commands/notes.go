@@ -49,9 +49,6 @@ func cmdPin(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if _, err := maybeRenew(ws, session); err != nil {
-		return 0, err
-	}
 	text := strings.TrimSpace(strings.Join(ctx.Positional, " "))
 	if text == "" {
 		text = readStdin(os.Stdin)
@@ -172,10 +169,4 @@ func cmdLog(ctx *Ctx) (int, error) {
 		}
 		w.Flush()
 	}
-}
-
-// maybeRenew is piggyback renewal, centralised in the store so that every
-// command that resolves an actor renews, not just the handful that remember to.
-func maybeRenew(ws *store.Workspace, session jsonx.Obj) ([]string, error) {
-	return store.RenewOwnLeases(ws, session)
 }

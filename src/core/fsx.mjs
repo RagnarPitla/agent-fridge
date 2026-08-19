@@ -8,6 +8,10 @@ import { stableStringify, ulid } from './util.mjs';
 const IS_WIN = process.platform === 'win32';
 const RENAME_RETRY = ['EPERM', 'EACCES', 'EBUSY'];
 
+export const seams = {
+  beforeExclusivePublish: () => {},
+};
+
 export function ensureDir(dir) {
   try {
     fs.mkdirSync(dir, { recursive: true });
@@ -101,6 +105,7 @@ export function createExclusive(finalPath, text, tmpDir) {
   } finally {
     if (fd !== undefined) try { fs.closeSync(fd); } catch { /* ignore */ }
   }
+  seams.beforeExclusivePublish(tmp, finalPath);
   try {
     fs.linkSync(tmp, finalPath);
   } catch (e) {

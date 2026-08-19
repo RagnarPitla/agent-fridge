@@ -324,27 +324,30 @@ export async function heartbeat(ctx) {
   const ws = open(ctx);
   const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   const ids = [].concat(ctx.flags.claim || []);
-  const mine = listClaims(ws).filter((d) => d.claim.sessionId === session.id);
-  const targets = ids.length ? mine.filter((d) => ids.includes(d.claim.id)) : mine;
-  if (ids.length && targets.length !== ids.length) {
-    const missing = ids.filter((id) => !targets.some((d) => d.claim.id === id));
-    throw new AppError('E_NOT_FOUND', `No live card of yours named ${missing.join(', ')}.`, { hint: `${BIN} whoami` });
-  }
-  if (!targets.length) return emit(ctx, 'heartbeat', { data: { renewed: [] }, text: 'you are not holding any cards' });
-  const expired = targets.filter((d) => d.stale);
-  if (expired.length) {
-    throw new AppError('E_LEASE_EXPIRED', `${expired.length} of your card(s) already fell off the door.`, {
-      hint: `${BIN} reap && ${BIN} claim ... again`,
-      details: { claims: expired.map((d) => d.claim.id) },
+  const renewed = await withMutex(ws, 'heartbeat', () => {
+    const mine = listClaims(ws).filter((d) => d.claim.sessionId === session.id);
+    const targets = ids.length ? mine.filter((d) => ids.includes(d.claim.id)) : mine;
+    if (ids.length && targets.length !== ids.length) {
+      const missing = ids.filter((id) => !targets.some((d) => d.claim.id === id));
+      throw new AppError('E_NOT_FOUND', `No live card of yours named ${missing.join(', ')}.`, { hint: `${BIN} whoami` });
+    }
+    if (!targets.length) return [];
+    const expired = targets.filter((d) => d.stale);
+    if (expired.length) {
+      throw new AppError('E_LEASE_EXPIRED', `${expired.length} of your card(s) already fell off the door.`, {
+        hint: `${BIN} reap && ${BIN} claim ... again`,
+        details: { claims: expired.map((d) => d.claim.id) },
+      });
+    }
+    const ttlOverride = ctx.flags.ttl ? parseDuration(ctx.flags.ttl, 'ttl') : null;
+    return targets.map((d) => {
+      const ttl = Math.min(ttlOverride || d.claim.ttlMs, ws.config.lease.maxTtlMs);
+      const lease = writeLease(ws, d.claim.id, { sessionId: session.id, ttlMs: ttl, renewals: (d.lease?.renewals || 0) + 1 });
+      return { claimId: d.claim.id, expiresAt: lease.expiresAt };
     });
-  }
-  const ttlOverride = ctx.flags.ttl ? parseDuration(ctx.flags.ttl, 'ttl') : null;
-  const renewed = targets.map((d) => {
-    const ttl = Math.min(ttlOverride || d.claim.ttlMs, ws.config.lease.maxTtlMs);
-    const lease = writeLease(ws, d.claim.id, { sessionId: session.id, ttlMs: ttl, renewals: (d.lease?.renewals || 0) + 1 });
-    return { claimId: d.claim.id, expiresAt: lease.expiresAt };
   });
   autoRender(ws);
+  if (!renewed.length) return emit(ctx, 'heartbeat', { data: { renewed: [] }, text: 'you are not holding any cards' });
   return emit(ctx, 'heartbeat', {
     data: { renewed },
     text: `still on it: renewed ${renewed.length} card(s)\n${renewed.map((r) => `  ${r.claimId}  until ${r.expiresAt}`).join('\n')}`,
@@ -357,14 +360,16 @@ export async function extend(ctx) {
   const id = ctx.positional[0];
   if (!id) throw new AppError('E_USAGE', 'Which card?', { hint: `${BIN} extend <claim-id> --ttl 1h` });
   if (!ctx.flags.ttl) throw new AppError('E_USAGE', '--ttl is required.', { hint: `${BIN} extend ${id} --ttl 1h` });
-  const d = readClaim(ws, id);
-  if (!d) throw new AppError('E_NOT_FOUND', `No card ${id}.`, { hint: `${BIN} board` });
-  if (d.claim.sessionId !== session.id) {
-    throw new AppError('E_NOT_OWNER', `Card ${id} belongs to ${d.claim.actorName}.`, { hint: `${BIN} handoff ${id} --to <you>` });
-  }
   const ttlMs = Math.min(parseDuration(ctx.flags.ttl, 'ttl'), ws.config.lease.maxTtlMs);
-  saveClaim(ws, { ...d.claim, ttlMs, updatedAt: nowIso() });
-  const lease = writeLease(ws, id, { sessionId: session.id, ttlMs, renewals: (d.lease?.renewals || 0) + 1 });
+  const lease = await withMutex(ws, 'extend', () => {
+    const d = readClaim(ws, id);
+    if (!d) throw new AppError('E_NOT_FOUND', `No card ${id}.`, { hint: `${BIN} board` });
+    if (d.claim.sessionId !== session.id) {
+      throw new AppError('E_NOT_OWNER', `Card ${id} belongs to ${d.claim.actorName}.`, { hint: `${BIN} handoff ${id} --to <you>` });
+    }
+    saveClaim(ws, { ...d.claim, ttlMs, updatedAt: nowIso() });
+    return writeLease(ws, id, { sessionId: session.id, ttlMs, renewals: (d.lease?.renewals || 0) + 1 });
+  });
   autoRender(ws);
   return emit(ctx, 'extend', { data: { claimId: id, ttlMs, expiresAt: lease.expiresAt }, text: `${id} now runs until ${lease.expiresAt}` });
 }
@@ -439,7 +444,15 @@ export async function release(ctx) {
 export async function reap(ctx) {
   const ws = open(ctx);
   let actor = null; let session = null;
-  try { ({ actor, session } = requireActor(ws, { agent: ctx.flags.agent, mutating: false })); } catch { /* reap works without a session */ }
+  const explicit = ctx.flags.agent;
+  const candidate = explicit || process.env.FRIDGE_ACTOR;
+  if (candidate) {
+    try {
+      ({ actor, session } = requireActor(ws, { agent: candidate, mutating: true }));
+    } catch (error) {
+      if (explicit || error?.code !== 'E_NO_SESSION') throw error;
+    }
+  }
   const force = Boolean(ctx.flags.force);
   const targets = () => listClaims(ws).filter((d) => d.stale || (force && d.expired));
   if (ctx.flags['dry-run']) {
@@ -477,10 +490,16 @@ export async function wait(ctx) {
 
   // Put a marker on the waiting list so the board can show who is blocked.
   let entry = null;
-  try {
-    const { actor, session } = requireActor(ws, { agent: ctx.flags.agent });
-    entry = writeQueueEntry(ws, { id: newId('que'), claimId: id, actorName: actor.name, sessionId: session.id, include: initial.claim.scope.include, task: null });
-  } catch { /* waiting without a session is allowed; it just is not attributed */ }
+  const explicit = ctx.flags.agent;
+  const candidate = explicit || process.env.FRIDGE_ACTOR;
+  if (candidate) {
+    try {
+      const { actor, session } = requireActor(ws, { agent: candidate, mutating: true });
+      entry = writeQueueEntry(ws, { id: newId('que'), claimId: id, actorName: actor.name, sessionId: session.id, include: initial.claim.scope.include, task: null });
+    } catch (error) {
+      if (explicit || error?.code !== 'E_NO_SESSION') throw error;
+    }
+  }
   const done = () => { if (entry) removeQueueEntry(ws, entry.id); };
 
   try {
@@ -517,27 +536,28 @@ const IS_WIN = process.platform === 'win32';
 function resolveExecutable(cmd, cwd) {
   if (!IS_WIN) return { file: cmd, useShell: false };
   const isBatch = (f) => /\.(cmd|bat)$/i.test(f);
+  const exts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
   if (cmd.includes('/') || cmd.includes('\\')) {
     const abs = path.resolve(cwd, cmd);
-    return { file: abs, useShell: isBatch(abs) };
+    const candidates = path.extname(abs) ? [abs] : [abs, ...exts.map((ext) => abs + ext)];
+    const found = candidates.find((candidate) => fs.existsSync(candidate));
+    return { file: found || abs, useShell: Boolean(found && isBatch(found)) };
   }
-  const exts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
+  const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
   if (path.extname(cmd)) {
-    for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+    for (const dir of dirs) {
       const full = path.join(dir, cmd);
       if (fs.existsSync(full)) return { file: full, useShell: isBatch(full) };
     }
-    return { file: cmd, useShell: isBatch(cmd) };
+    return { file: cmd, useShell: false };
   }
-  for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+  for (const dir of dirs) {
     for (const ext of exts) {
       const full = path.join(dir, cmd + ext);
       if (fs.existsSync(full)) return { file: full, useShell: isBatch(full) };
     }
   }
-  // Not found on PATH. Hand it to the shell so the error message comes from
-  // the shell rather than from a bare ENOENT with no context.
-  return { file: cmd, useShell: true };
+  return { file: cmd, useShell: false };
 }
 
 /** Quote one argument for cmd.exe, which is the only thing that reads the string we build. */
@@ -567,12 +587,41 @@ export async function run(ctx) {
 
   const [cmd, ...args] = ctx.rest;
   const ttlMs = parseDuration(ctx.flags.ttl || ws.config.lease.defaultTtlMs, 'ttl');
-  const timer = setInterval(() => {
+  let heartbeatStopped = false;
+  let heartbeatError = null;
+  let heartbeatInFlight = Promise.resolve();
+  const beat = async () => {
+    if (heartbeatStopped) return;
     try {
       const ws2 = open(ctx);
       const { session } = requireActor(ws2, { agent: ctx.flags.agent, mutating: true });
-      writeLease(ws2, claimId, { sessionId: session.id, ttlMs, renewals: 0 });
-    } catch { /* the child matters more than the heartbeat */ }
+      await withMutex(ws2, 'run-heartbeat', () => {
+        if (heartbeatStopped) return;
+        const current = readClaim(ws2, claimId);
+        if (!current) throw new AppError('E_NOT_FOUND', `Card ${claimId} disappeared while '${cmd}' was running.`);
+        if (process.env.FRIDGE_TEST === '1' && process.env.FRIDGE_FAULT === 'delay-run-heartbeat') {
+          fs.writeFileSync(path.join(ws2.paths.tmp, 'run-heartbeat-entered'), 'entered\n');
+          return sleep(800).then(() => {
+            if (heartbeatStopped) return;
+            writeLease(ws2, claimId, {
+              sessionId: session.id,
+              ttlMs,
+              renewals: Number(current.lease?.renewals || 0) + 1,
+            });
+          });
+        }
+        writeLease(ws2, claimId, {
+          sessionId: session.id,
+          ttlMs,
+          renewals: Number(current.lease?.renewals || 0) + 1,
+        });
+      });
+    } catch (error) {
+      heartbeatError ||= error;
+    }
+  };
+  const timer = setInterval(() => {
+    heartbeatInFlight = heartbeatInFlight.then(beat);
   }, Math.max(1000, Math.floor(ttlMs / 3)));
   timer.unref?.();
 
@@ -586,8 +635,13 @@ export async function run(ctx) {
     child.on('error', (e) => resolve({ code: e.code === 'ENOENT' ? 127 : 1, spawnError: e }));
     child.on('close', (c, signal) => resolve({ code: signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGKILL: 9 })[signal] || 0) : c ?? 0 }));
   });
+  heartbeatStopped = true;
   clearInterval(timer);
+  await heartbeatInFlight;
   const code = outcome.code;
+  if (heartbeatError) {
+    process.stderr.write(`${BIN} run: heartbeat failed while '${cmd}' was running: ${heartbeatError.message}\n`);
+  }
   if (outcome.spawnError) {
     process.stderr.write(`${BIN} run: could not start '${cmd}': ${outcome.spawnError.code || outcome.spawnError.message}\n`);
     if (IS_WIN) process.stderr.write(`  looked for '${target.file}' using PATHEXT (${process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD'})\n`);
@@ -601,5 +655,6 @@ export async function run(ctx) {
     ...ctx, command: 'release', positional: [claimId], quiet: true,
     flags: { ...ctx.flags, outcome: code === 0 ? 'done' : 'failed', note: `${cmd} exited ${code}` },
   });
+  if (heartbeatError && code === 0) throw heartbeatError;
   return code;
 }
