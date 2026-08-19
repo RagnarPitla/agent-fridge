@@ -58,6 +58,8 @@
     "gen:check": "node tools/gen-exit-codes.mjs --check",
     "demo": "node tools/demo.mjs",
     "lint": "node tools/lint.mjs",
+    "check": "node tools/check.mjs",
+    "check:fast": "node tools/check.mjs --fast",
     "go:build": "node tools/go.mjs build ./...",
     "go:vet": "node tools/go.mjs vet ./...",
     "go:test": "node tools/go.mjs test ./...",

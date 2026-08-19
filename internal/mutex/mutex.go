@@ -223,7 +223,6 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 	return fn()
 }
 
-
 // breakLock removes a lock that a waiter has judged to be dead.
 //
 // Breaking is the one operation that can violate mutual exclusion, because a

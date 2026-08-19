@@ -85,7 +85,15 @@ divergence quietly.
 
 ## The checks
 
-Run these before you push. CI runs exactly these, on Linux, macOS, and Windows.
+One command runs what CI runs, in the order CI runs it:
+
+```bash
+npm run check          # everything, a few minutes
+npm run check:fast     # unit tests only, for a tight edit loop
+```
+
+Use it. Every check below has failed CI at least once after a change its author
+was sure was safe, usually because the local loop was a remembered subset.
 
 | Command | What it enforces |
 | --- | --- |

@@ -26,7 +26,9 @@ func TestAFailedStatMustNotLookLikeAnAncientLock(t *testing.T) {
 	env := newEnv(t)
 
 	original := statLock
-	statLock = func(string) (os.FileInfo, error) { return nil, errors.New("simulated windows delete-pending stat failure") }
+	statLock = func(string) (os.FileInfo, error) {
+		return nil, errors.New("simulated windows delete-pending stat failure")
+	}
 	t.Cleanup(func() { statLock = original })
 
 	// A holder that has taken the lock but has not written owner.json yet.
