@@ -62,20 +62,45 @@ test('the 60-second quick start in the README actually runs', (t) => {
   }
 });
 
-test('every fridge command the README shows is a command that exists', () => {
+/**
+ * Every shell line in every tracked Markdown file, as {file, line, text}.
+ * Only fenced blocks count, so prose like "the fridge door" is not mistaken
+ * for a `fridge door` command.
+ */
+function docCommandLines() {
+  const files = spawnSync('git', ['ls-files', '*.md'], { cwd: REPO, encoding: 'utf8' })
+    .stdout.trim().split('\n').filter(Boolean);
+  const out = [];
+  for (const rel of files) {
+    const lines = fs.readFileSync(path.join(REPO, rel), 'utf8').split('\n');
+    let fenced = false;
+    lines.forEach((raw, i) => {
+      if (/^\s*```/.test(raw)) { fenced = /^\s*```(bash|sh|console|shell|powershell|ps1)?\s*$/.test(raw) ? !fenced : fenced; return; }
+      if (!fenced) return;
+      const text = raw.replace(/^\s*[$>]\s+/, '').replace(/\s+#.*$/, '').trim();
+      if (text.startsWith('fridge ')) out.push({ where: `${rel}:${i + 1}`, text });
+    });
+  }
+  assert.ok(out.length > 20, `only found ${out.length} documented commands; the extractor is probably broken`);
+  return out;
+}
+
+test('every fridge command the docs show is a command that exists', () => {
   const help = spawnSync(process.execPath, [CLI, 'help'], { encoding: 'utf8', cwd: REPO }).stdout;
   const known = new Set([
+    'help',
     ...[...help.matchAll(/^ {2}([a-z]+)\s{2,}/gm)].map((m) => m[1]),
-    ...[...help.matchAll(/([a-z]+)=([a-z]+)/g)].flatMap((m) => [m[1], m[2]]),
   ]);
   assert.ok(known.size > 10, `could not parse the command list from help:\n${help}`);
 
-  const shown = new Set([...readme().matchAll(/^\s*(?:\$ )?fridge ([a-z]+)/gm)].map((m) => m[1]));
-  const missing = [...shown].filter((c) => !known.has(c));
-  assert.deepEqual(missing, [], `README shows commands that do not exist: ${missing.join(', ')}`);
+  const missing = docCommandLines()
+    .map((c) => ({ ...c, cmd: c.text.split(/\s+/)[1] }))
+    .filter((c) => !known.has(c.cmd))
+    .map((c) => `${c.where}  fridge ${c.cmd}`);
+  assert.deepEqual(missing, [], `docs show commands that do not exist:\n${missing.join('\n')}`);
 });
 
-test('every --vendor the docs suggest for join is a vendor the CLI accepts', (t) => {
+test('every --vendor the docs pass to join is a vendor the CLI accepts', (t) => {
   const root = makeRepo('vendors');
   t.after(() => cleanup(root));
   run(root, ['init', '--no-adapters'], null);
@@ -87,16 +112,10 @@ test('every --vendor the docs suggest for join is a vendor the CLI accepts', (t)
 
   // `adapters --vendor` names instruction files, not agent vendors, so only
   // the values handed to `join` have to be in this list.
-  const offenders = [];
-  for (const rel of ['README.md', 'docs/adapters.md', 'docs/interop.md', 'skill/SKILL.md', 'CONTRIBUTING.md']) {
-    const abs = path.join(REPO, rel);
-    if (!fs.existsSync(abs)) continue;
-    for (const line of fs.readFileSync(abs, 'utf8').split('\n')) {
-      if (!/\bjoin\b/.test(line)) continue;
-      const m = /--vendor\s+"?([a-z][a-z0-9-]*)"?/.exec(line);
-      if (!m || m[1].includes('<') || m[1].startsWith('$')) continue;
-      if (!allowed.has(m[1])) offenders.push(`${rel}: --vendor ${m[1]}`);
-    }
-  }
-  assert.deepEqual(offenders, [], `docs tell people to join with a vendor the CLI rejects. Allowed: ${[...allowed].join(', ')}`);
+  const offenders = docCommandLines()
+    .filter((c) => c.text.startsWith('fridge join'))
+    .map((c) => ({ ...c, vendor: (/--vendor\s+"?([a-z][a-z0-9-]*)"?/.exec(c.text) || [])[1] }))
+    .filter((c) => c.vendor && !c.vendor.startsWith('$') && !allowed.has(c.vendor))
+    .map((c) => `${c.where}  --vendor ${c.vendor}`);
+  assert.deepEqual(offenders, [], `docs tell people to join with a vendor the CLI rejects.\n${offenders.join('\n')}\nAllowed: ${[...allowed].join(', ')}`);
 });
