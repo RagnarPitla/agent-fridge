@@ -727,6 +727,7 @@ the repository root cannot assert a claim and cannot block one.
 
 | Document | What is in it |
 | --- | --- |
+| [COLLABORATE.md](COLLABORATE.md) | Use Agent Fridge with people and agents |
 | [docs/assets/visual-story.html](docs/assets/visual-story.html) | Public visual walkthrough, compatibility matrix, and a real two-terminal transcript |
 | [spec/protocol-v0.1.md](spec/protocol-v0.1.md) | The complete protocol: schemas, algorithms, invariants. Enough to reimplement in another language |
 | [spec/exit-codes.md](spec/exit-codes.md) | The exit-code contract (generated) |
@@ -742,7 +743,7 @@ the repository root cannot assert a claim and cannot block one.
 | [skill/SKILL.md](skill/SKILL.md) | The bundled, vendor-neutral Agent Skill, and [when to install it](skill/README.md) |
 | [vectors/](vectors/) | The language-neutral conformance vectors, embedded in the binary |
 | [examples/01-two-terminals/](examples/01-two-terminals/) | Runnable before/after scripts, bash and PowerShell |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to change the protocol without breaking it |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribute to Agent Fridge |
 | [GOVERNANCE.md](GOVERNANCE.md) | Who decides what, and how the protocol is versioned |
 | [SECURITY.md](SECURITY.md) | The trust boundary, stated plainly, and what counts as a vulnerability |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, and which version of what |
