@@ -1,0 +1,116 @@
+name: Bug report
+description: Something behaved incorrectly. Transcripts are gold.
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most valuable bug report for this project is a **transcript**: what you
+        ran in each terminal, in what order, and what came back.
+
+        If your issue is "an agent ignored a claim and edited anyway", that is a real
+        issue but it is an *adapter* problem, not a locking bug. FridgeBoard is
+        cooperative by design. Please use the "Adapter or instructions" template.
+
+        Security problems: do not file here. See SECURITY.md.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What did you expect, and what did you get instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: transcript
+    attributes:
+      label: Transcript
+      description: >
+        The commands and output from each terminal or process, labelled. Include the
+        exit codes; `echo $?` in a POSIX shell, `$LASTEXITCODE` in PowerShell.
+      placeholder: |
+        # terminal A
+        $ fridge claim "src/**" --task "refactor" --agent alice
+        ... output ...
+        $ echo $?
+        0
+
+        # terminal B, at the same time
+        $ fridge claim "src/api/routes.ts" --task "fix" --agent bob
+        ... output ...
+        $ echo $?
+        0     <-- this is the bug, expected 10
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `fridge doctor --json`
+      render: json
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `fridge version`
+      placeholder: fridgeboard 0.1.0 (protocol wcp/0.1)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - WSL
+        - Other (say which below)
+    validations:
+      required: true
+
+  - type: input
+    id: shell
+    attributes:
+      label: Shell and terminal
+      placeholder: zsh 5.9 in tmux 3.4 / PowerShell 7.4 in Windows Terminal
+    validations:
+      required: true
+
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: v22.11.0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: filesystem
+    attributes:
+      label: Where does the repository live?
+      description: >
+        This matters more than it looks. Network mounts, container bind mounts, and
+        case-insensitive volumes have historically broken locking schemes.
+      options:
+        - Local disk
+        - Network share (NFS, SMB, or similar)
+        - Container or VM bind mount
+        - Cloud-synced folder (Dropbox, iCloud, OneDrive)
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: anything
+    attributes:
+      label: Anything else
+      description: Agents involved, multiplexer, whether it reproduces every time.
+    validations:
+      required: false

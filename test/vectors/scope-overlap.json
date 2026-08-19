@@ -1,0 +1,24 @@
+{
+  "protocol": "wcp/0.1",
+  "title": "Scope overlap conformance vectors",
+  "note": "Invariant I3: overlap may over-report, it must never under-report. Every case here is one an implementation must get exactly right.",
+  "cases": [
+    { "name": "identical files", "a": ["src/api/routes.ts"], "b": ["src/api/routes.ts"], "overlap": true },
+    { "name": "different files in one directory", "a": ["src/api/routes.ts"], "b": ["src/api/db.ts"], "overlap": false },
+    { "name": "file inside a claimed directory", "a": ["src/api/**"], "b": ["src/api/routes.ts"], "overlap": true, "reason": "literal-prefix-nesting" },
+    { "name": "directory inside a claimed tree", "a": ["src/**"], "b": ["src/api/**"], "overlap": true, "reason": "literal-prefix-nesting" },
+    { "name": "the nesting check works in both directions", "a": ["src/api/**"], "b": ["src/**"], "overlap": true, "reason": "literal-prefix-nesting" },
+    { "name": "sibling directories are disjoint", "a": ["src/api/**"], "b": ["src/ui/**"], "overlap": false },
+    { "name": "a prefix that is not a path boundary is not nesting", "a": ["src/api/**"], "b": ["src/apiv2/**"], "overlap": false },
+    { "name": "extension globs in the same directory overlap", "a": ["src/api/*.ts"], "b": ["src/api/*.js"], "overlap": true },
+    { "name": "a deep glob covers a nested file", "a": ["src/**/*.ts"], "b": ["src/api/routes.ts"], "overlap": true },
+    { "name": "root globstar covers everything", "a": ["**"], "b": ["docs/guide.md"], "overlap": true, "reason": "global-pattern" },
+    { "name": "root globstar overlaps itself", "a": ["**"], "b": ["**"], "overlap": true, "reason": "global-pattern" },
+    { "name": "top-level files are disjoint from directories", "a": ["README.md"], "b": ["src/**"], "overlap": false },
+    { "name": "multi-pattern scopes overlap if any pair does", "a": ["docs/**", "src/api/**"], "b": ["src/api/db.ts"], "overlap": true },
+    { "name": "multi-pattern scopes stay disjoint when no pair overlaps", "a": ["docs/**", "src/api/**"], "b": ["src/ui/**", "README.md"], "overlap": false },
+    { "name": "brace alternation overlaps one of its branches", "a": ["src/{api,ui}/**"], "b": ["src/ui/app.tsx"], "overlap": true },
+    { "name": "brace alternation stays disjoint from an unlisted branch", "a": ["src/{api,ui}/**"], "b": ["docs/guide.md"], "overlap": false },
+    { "name": "a bare directory name nests like a tree", "a": ["src/api"], "b": ["src/api/routes.ts"], "overlap": true }
+  ]
+}

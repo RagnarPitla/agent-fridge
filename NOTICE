@@ -1,0 +1,13 @@
+FridgeBoard
+Copyright 2026 Ragnar Pitla and FridgeBoard contributors
+
+This product includes software developed as part of the FridgeBoard project
+(https://github.com/RagnarPitla/fridgeboard).
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+these files except in compliance with the License. You may obtain a copy of the
+License at http://www.apache.org/licenses/LICENSE-2.0
+
+FridgeBoard has no third-party runtime dependencies. Everything under src/ and
+bin/ is original work by the FridgeBoard contributors and uses only the Node.js
+standard library.

@@ -1,0 +1,80 @@
+name: Data loss or lock defeat
+description: Two claims overlapped, or a note or claim went missing. Highest priority.
+title: "[data-loss] "
+labels: [bug, data-loss, priority-high, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This template is for the two failures that would mean the project does not
+        do the one thing it exists to do:
+
+        1. **Lock defeat** - two overlapping `exclusive` claims granted at once.
+        2. **Data loss** - a note or a claim that was written and then vanished,
+           truncated, or was overwritten.
+
+        These get looked at before anything else. Please be as precise as you can,
+        and **do not delete the `.fridge/` directory** before you have copied it.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which is it?
+      options:
+        - Two overlapping exclusive claims were both granted
+        - A pinned note disappeared or was overwritten
+        - A claim disappeared without being released or reaped
+        - A note was truncated or corrupted
+        - Something else that lost work
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >
+        Exact commands per process, and how they were started. If you used a script
+        or a barrier to start them simultaneously, include it. If it is
+        intermittent, say roughly how often.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: >
+        Paste `fridge status --json` and the relevant records from
+        `.fridge/claims/` and `.fridge/notes/`. Filenames matter: note filenames
+        encode timestamp, sequence, and author.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Output of `fridge doctor --json`
+      render: json
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: OS, shell, Node version, filesystem
+      placeholder: macOS 15.2, zsh in tmux, Node v22.11.0, local APFS
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: kept
+    attributes:
+      label: State preserved
+      options:
+        - label: I still have the `.fridge/` directory from the failure and can share records if asked
+          required: false
+        - label: I have confirmed this is not `--force`, a hand-edit of `.fridge/`, or two different repositories
+          required: true

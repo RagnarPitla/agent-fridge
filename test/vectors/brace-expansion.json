@@ -1,0 +1,63 @@
+{
+  "protocol": "wcp/0.1",
+  "title": "Brace expansion conformance vectors",
+  "note": "Braces are expanded before matching. Expansion is order-independent for comparison purposes.",
+  "cases": [
+    {
+      "name": "no braces is identity",
+      "input": "src/**",
+      "expect": [
+        "src/**"
+      ]
+    },
+    {
+      "name": "simple alternation",
+      "input": "src/{api,ui}/**",
+      "expect": [
+        "src/api/**",
+        "src/ui/**"
+      ]
+    },
+    {
+      "name": "three branches",
+      "input": "{a,b,c}.ts",
+      "expect": [
+        "a.ts",
+        "b.ts",
+        "c.ts"
+      ]
+    },
+    {
+      "name": "two independent groups multiply",
+      "input": "{a,b}/{c,d}.ts",
+      "expect": [
+        "a/c.ts",
+        "a/d.ts",
+        "b/c.ts",
+        "b/d.ts"
+      ]
+    },
+    {
+      "name": "nested braces",
+      "input": "src/{api/{v1,v2},ui}/**",
+      "expect": [
+        "src/api/v1/**",
+        "src/api/v2/**",
+        "src/ui/**"
+      ]
+    },
+    {
+      "name": "an empty branch is allowed",
+      "input": "src/a{,.test}.ts",
+      "expect": [
+        "src/a.ts",
+        "src/a.test.ts"
+      ]
+    },
+    {
+      "name": "an unclosed brace is rejected rather than guessed",
+      "input": "src/{api/**",
+      "expect_error": "E_PATH_INVALID"
+    }
+  ]
+}

@@ -1,0 +1,60 @@
+{
+  "name": "fridgeboard",
+  "version": "0.1.0",
+  "description": "A fridge door for your repo. Multiple AI agents and humans work in one Git checkout without overwriting each other. Local-first, zero dependencies, model-neutral.",
+  "keywords": [
+    "ai-agents",
+    "multi-agent",
+    "coordination",
+    "file-locking",
+    "claude-code",
+    "github-copilot",
+    "codex",
+    "tmux",
+    "developer-tools",
+    "local-first"
+  ],
+  "license": "Apache-2.0",
+  "author": "Ragnar Pitla",
+  "homepage": "https://github.com/RagnarPitla/fridgeboard#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RagnarPitla/fridgeboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RagnarPitla/fridgeboard/issues"
+  },
+  "type": "module",
+  "bin": {
+    "fridge": "bin/fridge.mjs",
+    "fridgeboard": "bin/fridge.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "spec/",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "dependencies": {},
+  "scripts": {
+    "test": "node tools/run-tests.mjs test/unit test/integration",
+    "test:unit": "node tools/run-tests.mjs test/unit",
+    "test:integration": "node tools/run-tests.mjs test/integration",
+    "test:concurrency": "node tools/run-tests.mjs test/concurrency",
+    "test:all": "node tools/run-tests.mjs test/unit test/integration test/concurrency",
+    "gen": "node tools/gen-exit-codes.mjs",
+    "gen:check": "node tools/gen-exit-codes.mjs --check",
+    "demo": "node tools/demo.mjs",
+    "lint": "node tools/lint.mjs"
+  }
+}

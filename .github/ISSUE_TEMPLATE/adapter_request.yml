@@ -1,0 +1,71 @@
+name: Adapter or agent instructions
+description: An agent ignored a claim, or a vendor's instruction file needs support.
+labels: [adapter, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Two related things belong here:
+
+        - **"The agent ignored the claim and edited anyway."** This is expected in
+          the sense that FridgeBoard is cooperative and cannot stop a determined
+          process. It is still a real problem worth fixing, and the fix is usually in
+          the wording of the instruction block or in a hook. Please file it.
+        - **"Please support vendor X."** A new instruction file, a new agent CLI, a
+          new multiplexer.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: Which is this?
+      options:
+        - An agent ignored a claim or the instructions
+        - Add support for a new vendor or instruction file
+        - The generated block does not work well with a vendor
+        - Something about hooks or pre-commit integration
+    validations:
+      required: true
+
+  - type: input
+    id: vendor
+    attributes:
+      label: Agent or vendor
+      placeholder: Claude Code 1.x / GitHub Copilot CLI / Codex / Herdr / other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: >
+        If the agent ignored a claim, paste what it said and what it did. The exact
+        wording of its reasoning is genuinely useful, because it tells us which
+        sentence in the instruction block failed to land.
+    validations:
+      required: true
+
+  - type: textarea
+    id: block
+    attributes:
+      label: The instruction block in use
+      description: >
+        The generated block from your `AGENTS.md`, `CLAUDE.md`, or equivalent,
+        including the BEGIN and END markers so we can see the version and hash.
+      render: markdown
+    validations:
+      required: false
+
+  - type: textarea
+    id: filepaths
+    attributes:
+      label: For new vendor support
+      description: >
+        Where does this vendor read instructions from, what comment syntax does the
+        file use, and is there any documented size or format limit?
+      placeholder: |
+        Instruction file: .thing/instructions.md
+        Format: Markdown
+        Docs: https://...
+    validations:
+      required: false

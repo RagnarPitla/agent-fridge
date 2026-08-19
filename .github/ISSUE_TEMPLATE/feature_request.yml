@@ -1,0 +1,70 @@
+name: Feature request
+description: Something you want the CLI to do.
+labels: [enhancement, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before you write this: please check the **v0.1 scope** section of the README
+        and the "What this project will not become" section of GOVERNANCE.md.
+
+        Deliberately out of scope: a daemon, a server, a database, a required MCP
+        server, cloud or cross-machine sync, enforcement via filesystem permissions,
+        a TUI, editor plugins, and anything that adds a runtime dependency.
+
+        Those are not oversights. If you want one of them anyway, make the case, but
+        say up front that you know it is currently a "no".
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you actually trying to do, and what happens today? Describe the
+        situation, not the solution you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: If you have a specific command or flag in mind, write it out.
+      placeholder: |
+        fridge claim "src/**" --until "17:00"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you tried instead
+      description: Existing commands, scripts, or workarounds, and why they fell short.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Which layer does this belong to?
+      description: See docs/adr/0001-distributable-form.md if you are unsure.
+      options:
+        - CLI only (new flag or command, no change to on-disk state)
+        - Protocol (changes records, semantics, or exit codes)
+        - Adapters (vendor instruction files)
+        - Docs
+        - Not sure
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      options:
+        - label: This does not require a network, a daemon, a database, or a model
+          required: false
+        - label: This does not add a runtime dependency
+          required: false
+        - label: This works in PowerShell as well as a POSIX shell
+          required: false
