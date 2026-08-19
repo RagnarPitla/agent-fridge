@@ -57,6 +57,7 @@
     "test:integration": "node tools/run-tests.mjs test/integration",
     "test:concurrency": "node tools/run-tests.mjs test/concurrency",
     "test:all": "node tools/run-tests.mjs test/unit test/integration test/concurrency",
+    "site:check": "node tools/check-site.mjs",
     "gen": "node tools/gen-exit-codes.mjs",
     "gen:check": "node tools/gen-exit-codes.mjs --check",
     "demo": "node tools/demo.mjs",

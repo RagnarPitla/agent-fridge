@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Fridge mark</title>
+  <desc id="desc">A simple refrigerator door with two separate notes and a center divider.</desc>
+  <rect x="8" y="4" width="48" height="56" rx="10" fill="#b11f4b"/>
+  <rect x="13" y="9" width="38" height="46" rx="7" fill="#fcfbf8"/>
+  <path d="M32 9V55" stroke="#b11f4b" stroke-width="2"/>
+  <rect x="18" y="16" width="10" height="12" rx="2" fill="#b11f4b"/>
+  <rect x="36" y="31" width="10" height="12" rx="2" fill="#b11f4b"/>
+  <circle cx="23" cy="17" r="2" fill="#fcfbf8"/>
+  <circle cx="41" cy="32" r="2" fill="#fcfbf8"/>
+  <rect x="27" y="28" width="2" height="12" rx="1" fill="#b11f4b"/>
+  <rect x="35" y="28" width="2" height="12" rx="1" fill="#b11f4b"/>
+</svg>

@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Agent Fridge - stop AI coding agents from overwriting each other's work</title>
+  <meta name="description" content="A technical guide to Agent Fridge: path claims, leases, write-once notes, stable conflict exits, and a generated board for multiple coding agents sharing one checkout.">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://ragnarpitla.github.io/agent-fridge/">
+
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="Agent Fridge">
+  <meta property="og:title" content="Stop AI coding agents from overwriting each other's work.">
+  <meta property="og:description" content="Path claims, leases, write-once notes, and a generated shared board for Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any CLI.">
+  <meta property="og:url" content="https://ragnarpitla.github.io/agent-fridge/">
+  <meta property="og:image" content="https://ragnarpitla.github.io/agent-fridge/docs/assets/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta property="og:image:alt" content="Agent Fridge: four terminal lanes write separate records that feed a generated shared board.">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Stop AI coding agents from overwriting each other's work.">
+  <meta name="twitter:description" content="The shared whiteboard for AI coding agents: path claims, leases, write-once notes, and a generated board.">
+  <meta name="twitter:image" content="https://ragnarpitla.github.io/agent-fridge/docs/assets/social-preview.png">
+  <meta name="twitter:image:alt" content="Agent Fridge: four terminal lanes write separate records that feed a generated shared board.">
+
+  <link rel="icon" href="assets/fridge-mark.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+  </style>
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <div class="reading-progress" aria-hidden="true">
+    <div class="reading-progress-bar" data-reading-progress></div>
+  </div>
+
+  <header class="site-header">
+    <div class="container header-main">
+      <a class="wordmark" href="#top">
+        <img src="assets/fridge-mark.svg" alt="" width="30" height="30">
+        <span>Agent Fridge</span>
+      </a>
+      <div class="header-actions">
+        <a class="button small github-link" href="https://github.com/RagnarPitla/agent-fridge">GitHub</a>
+        <button class="theme-toggle" type="button" data-theme-toggle aria-label="Switch theme" aria-pressed="false">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M12 3a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V4a1 1 0 0 1 1-1Zm0 14a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm9-5a1 1 0 0 1-1 1h-1a1 1 0 1 1 0-2h1a1 1 0 0 1 1 1ZM6 12a1 1 0 0 1-1 1H4a1 1 0 1 1 0-2h1a1 1 0 0 1 1 1Zm11.66 5.66a1 1 0 0 1-1.42 0l-.7-.71a1 1 0 0 1 1.41-1.41l.71.7a1 1 0 0 1 0 1.42ZM8.46 8.46a1 1 0 0 1-1.41 0l-.71-.7a1 1 0 1 1 1.42-1.42l.7.71a1 1 0 0 1 0 1.41Zm9.2-2.12a1 1 0 0 1 0 1.42l-.71.7a1 1 0 0 1-1.41-1.41l.7-.71a1 1 0 0 1 1.42 0ZM8.46 15.54a1 1 0 0 1 0 1.41l-.7.71a1 1 0 1 1-1.42-1.42l.71-.7a1 1 0 0 1 1.41 0ZM12 18a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1Z"/>
+          </svg>
+          <span class="toggle-label">Theme</span>
+        </button>
+      </div>
+    </div>
+    <nav class="section-nav" aria-label="Article sections">
+      <div class="container">
+        <ul>
+          <li><a href="#problem">Problem</a></li>
+          <li><a href="#incident">Incident</a></li>
+          <li><a href="#protocol">Protocol</a></li>
+          <li><a href="#workspace">Four lanes</a></li>
+          <li><a href="#transcript">Transcript</a></li>
+          <li><a href="#compare">Compare</a></li>
+          <li><a href="#install">Install</a></li>
+          <li><a href="#security">Boundary</a></li>
+        </ul>
+      </div>
+    </nav>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <section class="hero" id="top" aria-labelledby="hero-heading">
+      <div class="container hero-grid">
+        <div>
+          <p class="eyebrow">Agent Fridge</p>
+          <h1 id="hero-heading">Stop AI coding agents from overwriting each other's work.</h1>
+          <p class="hero-lede">
+            <strong>The shared whiteboard for AI coding agents.</strong>
+            Path claims, leases, write-once notes, and a generated shared board
+            for Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any terminal.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#install">Install and try it</a>
+            <a class="button" href="https://github.com/RagnarPitla/agent-fridge">Read the source</a>
+          </div>
+          <ul class="hero-meta" aria-label="Agent Fridge properties">
+            <li>No daemon</li>
+            <li>No cloud service</li>
+            <li>No database</li>
+            <li>No mandatory MCP server</li>
+          </ul>
+        </div>
+
+        <div class="hero-diagram" role="img" aria-label="Four coding agents write separate records that feed one generated board.">
+          <p class="diagram-kicker">One checkout, separate authority</p>
+          <div class="diagram-agents">
+            <div class="mini-agent"><strong>Claude Code</strong><span>claim review</span></div>
+            <div class="mini-agent"><strong>GitHub Copilot</strong><span>claim design</span></div>
+            <div class="mini-agent"><strong>Codex</strong><span>claim build</span></div>
+            <div class="mini-agent"><strong>Pi</strong><span>pin release</span></div>
+          </div>
+          <div class="diagram-arrow" aria-hidden="true">v</div>
+          <div class="record-row" aria-label="Separate records">
+            <div class="record-chip">claim/A.json</div>
+            <div class="record-chip">lease/B.json</div>
+            <div class="record-chip">note/C.json</div>
+            <div class="record-chip">claim/D.json</div>
+          </div>
+          <div class="diagram-arrow" aria-hidden="true">v</div>
+          <div class="door-card">
+            <span>Generated overview</span>
+            <strong>.fridge/DOOR.md</strong>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="problem" aria-labelledby="problem-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">The engineering problem</p>
+            <h2 id="problem-heading">The repository is shared. Ownership is invisible.</h2>
+          </div>
+          <p class="section-lede">
+            Agentic coding tools run in isolated terminal sessions. Each can see the
+            same files, but none can see who else is editing which path unless the team
+            builds a coordination layer.
+          </p>
+        </div>
+
+        <div class="prose wide-prose">
+          <p>
+            Put four agents in one checkout and every one receives a locally coherent
+            view of the repository. That view is incomplete. Claude Code can be tracing
+            checkout logic while Codex starts editing the same module. A human can be
+            changing a migration while an IDE agent decides to regenerate it. Git sees
+            the final bytes, not the ownership decision that should have happened first.
+          </p>
+          <p>
+            The resulting failures are ordinary distributed-systems failures in a
+            surprisingly small room: duplicated work, overlapping path scopes, stale
+            reads, last-writer-wins overwrites, and unclear handoffs. The models can be
+            excellent at code and still be blind to concurrency outside their session.
+          </p>
+        </div>
+
+        <div class="stat-grid" aria-label="Common shared-checkout failure modes">
+          <div class="stat-card"><strong>1 checkout</strong><span>Several terminals see the same mutable files.</span></div>
+          <div class="stat-card"><strong>0 ownership</strong><span>Git does not announce who intends to write next.</span></div>
+          <div class="stat-card"><strong>Silent loss</strong><span>The last clean-looking write can erase valid work.</span></div>
+        </div>
+
+        <div class="callout">
+          <strong>A shared status document is not a lock.</strong>
+          If every participant must read and rewrite one Markdown file, that file becomes
+          another contested resource.
+        </div>
+      </div>
+    </section>
+
+    <section id="incident" aria-labelledby="incident-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">The incident</p>
+            <h2 id="incident-heading">Two well-behaved agents. About 128 lines gone.</h2>
+          </div>
+          <p class="section-lede">
+            The original failure was not a reckless edit. It was a correct read,
+            correct work, and correct write performed concurrently against one shared
+            Markdown file.
+          </p>
+        </div>
+
+        <div class="incident-stage" aria-label="Sanitized two-terminal recreation">
+          <div class="terminal-window">
+            <div class="terminal-titlebar">
+              <strong>Terminal A - agent alpha</strong>
+              <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            </div>
+            <div class="terminal-body">
+              <p><span class="prompt">$</span> read shared-development-updates.md</p>
+              <p class="muted">212 lines loaded</p>
+              <p><span class="prompt">$</span> implement checkout validation</p>
+              <p class="ok">tests: 18 passed</p>
+              <p><span class="prompt">$</span> append progress and write file</p>
+              <p class="ok">227 lines written</p>
+            </div>
+          </div>
+
+          <div class="terminal-window">
+            <div class="terminal-titlebar">
+              <strong>Terminal B - agent beta</strong>
+              <span class="terminal-dots" aria-hidden="true"><span></span><span></span><span></span></span>
+            </div>
+            <div class="terminal-body">
+              <p><span class="prompt">$</span> read shared-development-updates.md</p>
+              <p class="muted">212 lines loaded - stale copy</p>
+              <p><span class="prompt">$</span> prepare release evidence</p>
+              <p class="ok">docs: complete</p>
+              <p><span class="prompt">$</span> append progress and write file</p>
+              <p class="danger">214 lines written - alpha's update disappeared</p>
+            </div>
+          </div>
+        </div>
+
+        <ol class="timeline" aria-label="Read modify write collision timeline">
+          <li><time>13:04</time><p>Both terminals read the same 212-line document.</p></li>
+          <li><time>13:11</time><p>Terminal A writes its expanded 227-line version.</p></li>
+          <li><time>13:13</time><p>Terminal B writes a stale 214-line version based on the earlier read.</p></li>
+          <li><time>13:14</time><p>The file is valid Markdown. The missing work is not reported as a conflict.</p></li>
+        </ol>
+
+        <div class="callout warning">
+          <strong>No model instruction can make a shared writer safe.</strong>
+          "Read first," "append carefully," and "do not erase other work" were all obeyed.
+          The unsafe primitive was read-modify-write against one file. Safety has to come
+          from the storage shape, not a stronger reminder.
+        </div>
+      </div>
+    </section>
+
+    <section id="protocol" aria-labelledby="protocol-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">The coordination layer</p>
+            <h2 id="protocol-heading">Claim paths first. Generate the board last.</h2>
+          </div>
+          <p class="section-lede">
+            Agent Fridge makes each participant authoritative only for its own records.
+            The human-readable board is derived from those records and can be rebuilt at
+            any time.
+          </p>
+        </div>
+
+        <ol class="sequence" aria-label="Agent Fridge operating sequence">
+          <li><b>Claim</b><span>Take the narrow paths needed for the task.</span></li>
+          <li><b>Check</b><span>Ask before expanding into another path.</span></li>
+          <li><b>Pin</b><span>Write progress as a separate immutable note.</span></li>
+          <li><b>Heartbeat</b><span>Renew leases during long work.</span></li>
+          <li><b>Handoff</b><span>Transfer ownership without an unowned gap.</span></li>
+          <li><b>Release</b><span>Free the path and record the outcome.</span></li>
+        </ol>
+
+        <div class="principle-grid">
+          <article class="principle-card">
+            <span class="number">1</span>
+            <h3>Stable refusal</h3>
+            <p>An overlapping exclusive claim exits `10`. Scripts can branch on it and agents can stop before writing.</p>
+          </article>
+          <article class="principle-card">
+            <span class="number">2</span>
+            <h3>Sharded authority</h3>
+            <p>Claims, leases, sessions, and notes are separate records. One participant never rewrites another participant's record.</p>
+          </article>
+          <article class="principle-card">
+            <span class="number">3</span>
+            <h3>Derived overview</h3>
+            <p>`.fridge/DOOR.md` is generated, disposable, and never read as protocol state.</p>
+          </article>
+        </div>
+
+        <div class="callout success">
+          <strong>The invariant:</strong> authority is sharded; the overview is derived.
+          No daemon, cloud service, database, or mandatory MCP server is required.
+        </div>
+      </div>
+    </section>
+
+    <section id="mental-model" aria-labelledby="mental-heading">
+      <div class="container metaphor">
+        <div>
+          <p class="eyebrow">Only now, the metaphor</p>
+          <h2 id="mental-heading">Think of it like a fridge door for the repo.</h2>
+          <div class="prose">
+            <p>
+              Every housemate pins their own note. One magnet claims a chore. Stale
+              magnets fall off. Nobody rewrites somebody else's note to add their own.
+            </p>
+            <p>
+              The metaphor is memorable because the technical boundary is precise:
+              separate writers, visible ownership, expiring claims, and one generated
+              view of the room.
+            </p>
+          </div>
+        </div>
+
+        <div class="fridge-door" role="img" aria-label="A refrigerator door with three separate pinned notes and two handles.">
+          <div class="sticky-note note-one"><strong>Claim</strong><span>checkout review</span></div>
+          <div class="sticky-note note-two"><strong>Pin</strong><span>tests pass</span></div>
+          <div class="sticky-note note-three"><strong>Handoff</strong><span>docs remain</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="workspace" aria-labelledby="workspace-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">Illustrative workspace</p>
+            <h2 id="workspace-heading">One checkout, four lanes, one visible refusal.</h2>
+          </div>
+          <p class="section-lede">
+            This fictional project runs four terminals on one machine against one
+            checked-out integration branch. The PR numbers are work references, not
+            four local branches.
+          </p>
+        </div>
+
+        <div class="workspace-shell">
+          <div class="workspace-toolbar">
+            <p>
+              <strong>Checkout coordination scene</strong>
+              <span>All data is fictional and sanitized.</span>
+            </p>
+            <button class="button small primary" type="button" data-trigger-collision aria-pressed="false">Trigger collision</button>
+          </div>
+
+          <div class="workspace-grid">
+            <aside class="agent-board" aria-label="Generated Agent Fridge board">
+              <div class="board-heading">
+                <h3>Agent Fridge board</h3>
+                <span>generated view</span>
+              </div>
+              <ul class="claim-list">
+                <li class="claim-card" data-lane="claude" data-active="true">
+                  <div class="claim-top"><strong>review-claude</strong><span class="vendor-pill">Claude Code</span></div>
+                  <span class="claim-path">src/checkout/**</span>
+                  <span class="claim-task">PR #41 review - shared, read only</span>
+                </li>
+                <li class="claim-card" data-lane="copilot" data-active="false">
+                  <div class="claim-top"><strong>design-copilot</strong><span class="vendor-pill">GitHub Copilot</span></div>
+                  <span class="claim-path">design/checkout/**</span>
+                  <span class="claim-task">Checkout UX - exclusive</span>
+                </li>
+                <li class="claim-card" data-lane="codex" data-active="false">
+                  <div class="claim-top"><strong>api-codex</strong><span class="vendor-pill">Codex</span></div>
+                  <span class="claim-path">src/api/checkout/**</span>
+                  <span class="claim-task">PR #42 API - exclusive</span>
+                </li>
+                <li class="claim-card" data-lane="pi" data-active="false">
+                  <div class="claim-top"><strong>release-pi</strong><span class="vendor-pill">Pi</span></div>
+                  <span class="claim-path">docs/release/**</span>
+                  <span class="claim-task">PR #43 release - exclusive</span>
+                </li>
+                <li class="claim-card" data-state="blocked" data-blocked-claim hidden>
+                  <div class="claim-top"><strong>api-codex</strong><span class="state-pill">exit 10</span></div>
+                  <span class="claim-path">design/checkout/copy.md</span>
+                  <span class="claim-task">Refused: held by design-copilot</span>
+                </li>
+              </ul>
+            </aside>
+
+            <div class="terminal-stage">
+              <div class="terminal-tabs" role="tablist" aria-label="Agent terminal panes">
+                <button class="terminal-tab" id="tab-claude" type="button" role="tab" aria-selected="true" aria-controls="pane-claude" data-pane="claude">Claude Code</button>
+                <button class="terminal-tab" id="tab-copilot" type="button" role="tab" aria-selected="false" aria-controls="pane-copilot" data-pane="copilot" tabindex="-1">GitHub Copilot</button>
+                <button class="terminal-tab" id="tab-codex" type="button" role="tab" aria-selected="false" aria-controls="pane-codex" data-pane="codex" tabindex="-1">Codex</button>
+                <button class="terminal-tab" id="tab-pi" type="button" role="tab" aria-selected="false" aria-controls="pane-pi" data-pane="pi" tabindex="-1">Pi</button>
+              </div>
+
+              <div class="terminal-panel" id="pane-claude" role="tabpanel" aria-labelledby="tab-claude" data-pane-panel="claude">
+                <div class="pane-summary">
+                  <p><strong>Code review - PR #41</strong><span>Remote diff plus local read-only checks</span></p>
+                  <span class="mode-pill">shared claim</span>
+                </div>
+                <div class="code-shell">
+                  <div class="code-label"><span>review-claude</span></div>
+                  <pre><code>$ fridge claim "src/checkout/**" --mode shared \
+  --task "Review PR #41; read only"
+Card clm_review is yours.
+
+$ gh pr diff 41 -- src/checkout
+$ fridge pin "PR #41: rounding path needs a boundary test"</code></pre>
+                </div>
+              </div>
+
+              <div class="terminal-panel" id="pane-copilot" role="tabpanel" aria-labelledby="tab-copilot" data-pane-panel="copilot" hidden>
+                <div class="pane-summary">
+                  <p><strong>Product design - checkout UX</strong><span>Writes only the design lane</span></p>
+                  <span class="mode-pill">exclusive</span>
+                </div>
+                <div class="code-shell">
+                  <div class="code-label"><span>design-copilot</span></div>
+                  <pre><code>$ fridge claim "design/checkout/**" \
+  --task "Design checkout UX"
+Card clm_design is yours.
+
+$ fridge pin "UX states drafted: validation, recovery, retry"</code></pre>
+                </div>
+              </div>
+
+              <div class="terminal-panel" id="pane-codex" role="tabpanel" aria-labelledby="tab-codex" data-pane-panel="codex" hidden>
+                <div class="pane-summary">
+                  <p><strong>API build - PR #42</strong><span>Implements the checkout endpoint</span></p>
+                  <span class="mode-pill">exclusive</span>
+                </div>
+                <div class="code-shell">
+                  <div class="code-label"><span>api-codex</span></div>
+                  <pre><code>$ fridge claim "src/api/checkout/**" \
+  --task "Build checkout API for PR #42"
+Card clm_api is yours.
+
+$ fridge check src/api/checkout/routes.ts --for-write
+yours  src/api/checkout/routes.ts</code></pre>
+                </div>
+              </div>
+
+              <div class="terminal-panel" id="pane-pi" role="tabpanel" aria-labelledby="tab-pi" data-pane-panel="pi" hidden>
+                <div class="pane-summary">
+                  <p><strong>Docs and release - PR #43</strong><span>Collects release proof</span></p>
+                  <span class="mode-pill">exclusive</span>
+                </div>
+                <div class="code-shell">
+                  <div class="code-label"><span>release-pi</span></div>
+                  <pre><code>$ fridge claim "docs/release/**" \
+  --task "Prepare release notes for PR #43"
+Card clm_release is yours.
+
+$ fridge pin "Release checklist ready; waiting on API proof"</code></pre>
+                </div>
+              </div>
+
+              <div class="collision-lab">
+                <h3>Collision lab: change the second claim</h3>
+                <div class="collision-grid">
+                  <div class="code-shell">
+                    <div class="code-label"><span>Claim 1</span></div>
+                    <pre class="terminal-output"><code>$ fridge claim "design/checkout/**" --task "Design checkout UX"
+<span class="exit-ok">Card clm_design is yours.</span>
+<span class="exit-ok">exit 0</span></code></pre>
+                  </div>
+                  <div class="code-shell">
+                    <div class="code-label"><span>Claim 2</span></div>
+                    <pre class="terminal-output"><code data-second-claim>$ fridge claim "src/api/checkout/**" --task "Build checkout API for PR #42"</code>
+<code><span class="exit-ok" data-second-result>Card clm_api is yours.</span>
+<span class="exit-ok" data-second-exit>exit 0</span></code></pre>
+                  </div>
+                </div>
+                <p class="copy-status" data-collision-status aria-live="polite">The four original claims are disjoint.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="topology-note">
+          <p>
+            <strong>Topology truth:</strong> these panes share one checkout, so they share
+            live claims. Separate Git worktrees or clones do not share live `.fridge/`
+            state. Worktrees provide real file isolation; coordinate scope between them
+            through GitHub, issues, or a human plan. Agent Fridge can still coordinate
+            several participants inside any one worktree.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture" aria-labelledby="architecture-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">Before, after, and underneath</p>
+            <h2 id="architecture-heading">The storage shape is the safety mechanism.</h2>
+          </div>
+          <p class="section-lede">
+            The old path has concurrent writers targeting one document. The new path
+            gives each participant its own record and derives the overview.
+          </p>
+        </div>
+
+        <figure class="figure">
+          <div class="figure-media">
+            <img src="assets/before-after.svg" alt="Before and after diagram: shared Markdown loses about 128 lines, while sharded Agent Fridge notes lose zero.">
+          </div>
+          <figcaption>Read-modify-write collision on the left; one-writer-per-record authority on the right.</figcaption>
+        </figure>
+
+        <figure class="figure">
+          <div class="figure-media">
+            <img src="assets/protocol-flow.svg" alt="Protocol flow from terminal participants through claim, check, pin, and release commands to sharded records and a generated DOOR.md.">
+          </div>
+          <figcaption>The CLI is the integration surface. `.fridge/` records are authoritative; `DOOR.md` is the derived view.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="transcript" aria-labelledby="transcript-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">Real command contract</p>
+            <h2 id="transcript-heading">A two-terminal transcript with machine-readable exits.</h2>
+          </div>
+          <p class="section-lede">
+            The important output is not the prose. It is the stable exit code that lets
+            a person, shell script, hook, or agent stop before a collision.
+          </p>
+        </div>
+
+        <div class="transcript-layout">
+          <div>
+            <div class="code-shell">
+              <div class="code-label">
+                <span>Terminal A - initialize and claim</span>
+                <button class="copy-button" type="button" data-copy-target="terminal-a-commands">Copy</button>
+              </div>
+              <pre id="terminal-a-commands"><code>fridge init
+export FRIDGE_ACTOR=claude-review
+fridge join --agent "$FRIDGE_ACTOR" --vendor claude
+fridge claim "src/api/**" --task "Refactor the router" --ttl 30m
+fridge pin "Router split started; baseline tests pass"
+fridge heartbeat</code></pre>
+            </div>
+
+            <div class="code-shell">
+              <div class="code-label">
+                <span>Terminal B - overlapping claim</span>
+                <button class="copy-button" type="button" data-copy-target="terminal-b-commands">Copy</button>
+              </div>
+              <pre id="terminal-b-commands"><code>export FRIDGE_ACTOR=copilot-fix
+fridge join --agent "$FRIDGE_ACTOR" --vendor copilot
+fridge claim "src/api/routes.ts" --task "Fix route copy"</code></pre>
+              <pre class="terminal-output"><code>Somebody already has that chore.
+  who     claude-review
+  scope   src/api/**
+  doing   Refactor the router
+
+<span class="exit-conflict">E_CONFLICT: overlapping paths.</span>
+<span class="exit-conflict">exit 10</span></code></pre>
+            </div>
+
+            <div class="code-shell">
+              <div class="code-label">
+                <span>Owner hands off or releases</span>
+                <button class="copy-button" type="button" data-copy-target="handoff-commands">Copy</button>
+              </div>
+              <pre id="handoff-commands"><code>fridge handoff clm_... --to copilot-fix \
+  --note "Routes done; error path and docs remain"
+
+# Or, when complete:
+fridge release clm_... --outcome done \
+  --note "Router split complete; focused tests pass"</code></pre>
+            </div>
+            <p class="copy-status" data-copy-status aria-live="polite"></p>
+          </div>
+
+          <aside aria-label="Important exit codes">
+            <ul class="exit-code-list">
+              <li><code>0</code><span>Success. The claim, check, or mutation completed.</span></li>
+              <li><code>10</code><span>Conflict. Stop, narrow scope, wait, or request a handoff.</span></li>
+              <li><code>14</code><span>Out of scope. Claim the path before writing it.</span></li>
+              <li><code>13</code><span>Lease expired. The old ownership token is no longer valid.</span></li>
+              <li><code>21</code><span>Wait timed out. Pick another task or retry deliberately.</span></li>
+              <li><code>40</code><span>Invalid path. Traversal, escape, or unsupported pattern was refused.</span></li>
+            </ul>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <section id="compatibility" aria-labelledby="compat-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">Where it works</p>
+            <h2 id="compat-heading">If it can run a command, it can use the board.</h2>
+          </div>
+          <p class="section-lede">
+            There is no vendor SDK. Participants invoke `fridge`, read plain ASCII
+            output, and branch on exit codes.
+          </p>
+        </div>
+
+        <div class="compat-grid">
+          <article class="compat-group">
+            <h3>Coding agents</h3>
+            <div class="compat-pills">
+              <span class="compat-pill">Claude Code</span>
+              <span class="compat-pill">Codex</span>
+              <span class="compat-pill">Pi</span>
+              <span class="compat-pill">GitHub Copilot</span>
+              <span class="compat-pill">Cursor</span>
+              <span class="compat-pill">Any CLI agent</span>
+            </div>
+          </article>
+          <article class="compat-group">
+            <h3>Terminal layouts</h3>
+            <div class="compat-pills">
+              <span class="compat-pill">Herdr</span>
+              <span class="compat-pill">tmux</span>
+              <span class="compat-pill">screen</span>
+              <span class="compat-pill">Zellij</span>
+              <span class="compat-pill">Plain shells</span>
+            </div>
+          </article>
+          <article class="compat-group">
+            <h3>Operating systems</h3>
+            <div class="compat-pills">
+              <span class="compat-pill">macOS</span>
+              <span class="compat-pill">Linux</span>
+              <span class="compat-pill">Windows</span>
+              <span class="compat-pill">PowerShell</span>
+              <span class="compat-pill">WSL</span>
+            </div>
+          </article>
+          <article class="compat-group">
+            <h3>People and automation</h3>
+            <div class="compat-pills">
+              <span class="compat-pill">Humans</span>
+              <span class="compat-pill">CI jobs</span>
+              <span class="compat-pill">Shell scripts</span>
+              <span class="compat-pill">Hooks</span>
+              <span class="compat-pill">Makefiles</span>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="collaborate" aria-labelledby="collaborate-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">The operating model</p>
+            <h2 id="collaborate-heading">A collaboration loop, not just a lock command.</h2>
+          </div>
+          <p class="section-lede">
+            `COLLABORATE.md` defines how a real team joins, reports progress, expands
+            scope, recovers stale leases, and hands unfinished work to another owner.
+          </p>
+        </div>
+
+        <ol class="operating-loop" aria-label="Collaboration operating loop">
+          <li><b>Join</b><span>Use one unique actor identity per terminal.</span></li>
+          <li><b>Read</b><span>Open the board and inbox before choosing work.</span></li>
+          <li><b>Claim</b><span>Take the narrowest writable paths.</span></li>
+          <li><b>Check</b><span>Verify every expansion before editing.</span></li>
+          <li><b>Pin</b><span>Record durable progress and proof.</span></li>
+          <li><b>Heartbeat</b><span>Renew ownership during long work.</span></li>
+          <li><b>Handoff</b><span>Transfer or release without ambiguity.</span></li>
+        </ol>
+
+        <div class="handoff-contract">
+          <div>
+            <h3>The handoff contract</h3>
+            <ol class="handoff-list">
+              <li>What changed</li>
+              <li>Proof and tests</li>
+              <li>Remaining work</li>
+              <li>Risks and uncertainty</li>
+              <li>Affected paths</li>
+              <li>Pull request or issue link</li>
+            </ol>
+          </div>
+          <div class="code-shell">
+            <div class="code-label">
+              <span>Copyable handoff</span>
+              <button class="copy-button" type="button" data-copy-target="handoff-contract-command">Copy</button>
+            </div>
+            <pre id="handoff-contract-command"><code>fridge pin "HANDOFF PR #42: checkout validation changed; focused tests pass; retry test and docs remain; timeout behavior is the main risk; paths: src/api/checkout/**"
+
+fridge handoff clm_... --to release-pi \
+  --note "PR #42; proof pinned; retry test and docs remain"</code></pre>
+          </div>
+        </div>
+
+        <div class="cta-row">
+          <a class="button" href="https://github.com/RagnarPitla/agent-fridge/blob/main/COLLABORATE.md">Read COLLABORATE.md</a>
+          <a class="button" href="https://github.com/RagnarPitla/agent-fridge/blob/main/docs/interop.md">Read terminal interop</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="compare" aria-labelledby="compare-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">Honest comparison</p>
+            <h2 id="compare-heading">Use the stronger or simpler tool when it fits.</h2>
+          </div>
+          <p class="section-lede">
+            Agent Fridge solves one narrow case: cooperating participants editing one
+            checkout at the same time. Several alternatives are better outside that case.
+          </p>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Approach</th>
+                <th>Where it wins</th>
+                <th>Where it stops</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Git worktrees</strong></td>
+                <td>Real physical isolation, separate branch and index, no advisory trust needed.</td>
+                <td>Live claims do not cross worktrees; builds and dependencies may be expensive to duplicate.</td>
+              </tr>
+              <tr>
+                <td><strong>Git branches</strong></td>
+                <td>Review, revert, cherry-pick, remote sharing, and independent lines of work.</td>
+                <td>Two branches cannot be checked out concurrently in one working tree; merge cost arrives later.</td>
+              </tr>
+              <tr>
+                <td><strong>Shared Markdown</strong></td>
+                <td>Excellent when one human is the only writer and everyone else reads.</td>
+                <td>Concurrent read-modify-write is lossy and has no conflict exit.</td>
+              </tr>
+              <tr>
+                <td><strong>`flock` or lockfiles</strong></td>
+                <td>Simple, battle-tested protection for one short critical section on one machine.</td>
+                <td>No path-set overlap model, owner task, handoff, durable history, or native Windows story.</td>
+              </tr>
+              <tr>
+                <td><strong>SQLite or a local database</strong></td>
+                <td>Transactions, queries, constraints, and strong serialization for a purpose-built coordinator.</td>
+                <td>Requires a schema and client surface, is awkward in Git, and still needs a universal integration contract.</td>
+              </tr>
+              <tr>
+                <td><strong>MCP coordination server</strong></td>
+                <td>Tool calls are ergonomic and reliable when every participant is an MCP client.</td>
+                <td>A server must be configured and kept alive; shells, humans, hooks, and CI are not all MCP clients.</td>
+              </tr>
+              <tr>
+                <td><strong>Agent Fridge</strong></td>
+                <td>Portable path claims, leases, handoffs, attribution, and write-once history with no service.</td>
+                <td>Advisory only, local to one checkout, and not a replacement for branch or OS isolation.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="callout">
+          <strong>The default recommendation:</strong> use worktrees when independent
+          branches and duplicated build state are acceptable. Use Agent Fridge when
+          several participants intentionally need the same uncommitted checkout.
+        </div>
+      </div>
+    </section>
+
+    <section id="install" aria-labelledby="install-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">Try it locally</p>
+            <h2 id="install-heading">One binary. Sixty seconds to the first refusal.</h2>
+          </div>
+          <p class="section-lede">
+            The primary Go binary is self-contained. A complete zero-runtime-dependency
+            Node implementation passes the same conformance vectors.
+          </p>
+        </div>
+
+        <div class="install-grid">
+          <article class="install-card">
+            <div>
+              <h3>macOS and Linux</h3>
+              <p>Download the latest binary and verify its checksum.</p>
+            </div>
+            <div class="code-shell">
+              <div class="code-label"><span>POSIX installer</span><button class="copy-button" type="button" data-copy-target="install-posix">Copy</button></div>
+              <pre id="install-posix"><code>curl -fsSL https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.sh | sh</code></pre>
+            </div>
+          </article>
+
+          <article class="install-card">
+            <div>
+              <h3>Windows PowerShell</h3>
+              <p>Install the native Windows binary.</p>
+            </div>
+            <div class="code-shell">
+              <div class="code-label"><span>PowerShell installer</span><button class="copy-button" type="button" data-copy-target="install-powershell">Copy</button></div>
+              <pre id="install-powershell"><code>irm https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.ps1 | iex</code></pre>
+            </div>
+          </article>
+
+          <article class="install-card">
+            <div>
+              <h3>Go toolchain</h3>
+              <p>Go 1.21 or newer, standard library only.</p>
+            </div>
+            <div class="code-shell">
+              <div class="code-label"><span>Go install</span><button class="copy-button" type="button" data-copy-target="install-go">Copy</button></div>
+              <pre id="install-go"><code>go install github.com/RagnarPitla/agent-fridge/cmd/fridge@latest</code></pre>
+            </div>
+          </article>
+
+          <article class="install-card">
+            <div>
+              <h3>Node implementation</h3>
+              <p>Node 20.11 or newer, zero runtime dependencies.</p>
+            </div>
+            <div class="code-shell">
+              <div class="code-label"><span>npm install</span><button class="copy-button" type="button" data-copy-target="install-node">Copy</button></div>
+              <pre id="install-node"><code>npm install -g github:RagnarPitla/agent-fridge</code></pre>
+            </div>
+          </article>
+        </div>
+
+        <div class="quickstart code-shell">
+          <div class="code-label">
+            <span>60-second quickstart</span>
+            <button class="copy-button" type="button" data-copy-target="quickstart-code">Copy</button>
+          </div>
+          <pre id="quickstart-code"><code>fridge init
+fridge join --agent claude --vendor claude
+export FRIDGE_ACTOR=claude
+fridge claim "src/api/**" --task "Refactor the router"
+fridge board</code></pre>
+        </div>
+
+        <div class="quickstart code-shell">
+          <div class="code-label">
+            <span>Reproduce shared-file loss, then prove zero notes lost</span>
+            <button class="copy-button" type="button" data-copy-target="demo-code">Copy</button>
+          </div>
+          <pre id="demo-code"><code>git clone https://github.com/RagnarPitla/agent-fridge.git
+cd agent-fridge
+npm run demo</code></pre>
+        </div>
+
+        <div class="cta-row">
+          <a class="button primary" href="https://github.com/RagnarPitla/agent-fridge/releases">Download a release</a>
+          <a class="button" href="https://github.com/RagnarPitla/agent-fridge/blob/main/docs/quickstart.md">Full quickstart</a>
+          <a class="button" href="https://github.com/RagnarPitla/agent-fridge">GitHub repository</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="security" aria-labelledby="security-heading">
+      <div class="container">
+        <div class="article-header">
+          <div>
+            <p class="eyebrow">Scope and trust boundary</p>
+            <h2 id="security-heading">Coordination for cooperating writers, not a security sandbox.</h2>
+          </div>
+          <p class="section-lede">
+            Agent Fridge trusts every process that can write to `.fridge/`. That is the
+            same boundary as the working tree itself.
+          </p>
+        </div>
+
+        <div class="scope-grid">
+          <article class="scope-card solve">
+            <h3>What it solves</h3>
+            <ul>
+              <li>Invisible path ownership inside one shared checkout.</li>
+              <li>Silent overlap between cooperating participants.</li>
+              <li>Shared Markdown status-file races.</li>
+              <li>Stale ownership through expiring leases.</li>
+              <li>Unattributed progress and incomplete handoffs.</li>
+            </ul>
+          </article>
+          <article class="scope-card limit">
+            <h3>What it does not solve</h3>
+            <ul>
+              <li>A hostile or careless process that ignores exit `10`.</li>
+              <li>Merge conflicts between separate worktrees, clones, or branches.</li>
+              <li>Cross-machine coordination on network filesystems.</li>
+              <li>Git staging, branch switching, review, or deployment policy.</li>
+              <li>Secrets management, authentication, or filesystem isolation.</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="security-boundary">
+          <div>
+            <h3>Security properties</h3>
+            <p>Path traversal and symlink escapes are refused. Records are atomic. There is no network, telemetry, shell concatenation, or mutating Git command.</p>
+          </div>
+          <div>
+            <h3>Operator responsibility</h3>
+            <p>Only a human should authorize force recovery. Notes are durable and may be committed, so never pin credentials, customer data, or private source text.</p>
+          </div>
+        </div>
+
+        <div class="cta-row">
+          <a class="button" href="https://github.com/RagnarPitla/agent-fridge/blob/main/SECURITY.md">Read SECURITY.md</a>
+          <a class="button" href="https://github.com/RagnarPitla/agent-fridge/blob/main/docs/comparison.md">Read the full comparison</a>
+          <a class="button" href="https://github.com/RagnarPitla/agent-fridge/blob/main/spec/protocol-v0.1.md">Read protocol wcp/0.1</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="cta-section" id="contribute" aria-labelledby="contribute-heading">
+      <div class="container cta-grid">
+        <article class="cta-card primary-card">
+          <p class="eyebrow">Open source, Apache-2.0</p>
+          <h2 id="contribute-heading">Try the race. Inspect the records. Challenge the protocol.</h2>
+          <p>
+            The repository ships the incident demo, two independent implementations,
+            conformance vectors, parity tests, real multi-process tests, and the full
+            on-disk protocol.
+          </p>
+          <div class="cta-row">
+            <a class="button" href="https://github.com/RagnarPitla/agent-fridge">Star or fork on GitHub</a>
+          </div>
+        </article>
+        <article class="cta-card">
+          <h3>Choose the right starting point</h3>
+          <p>
+            Use `COLLABORATE.md` to bring Agent Fridge into a real project.
+            Use `CONTRIBUTING.md` when you want to change Agent Fridge itself.
+          </p>
+          <div class="cta-row">
+            <a class="button" href="https://github.com/RagnarPitla/agent-fridge/blob/main/COLLABORATE.md">Collaborate</a>
+            <a class="button" href="https://github.com/RagnarPitla/agent-fridge/blob/main/CONTRIBUTING.md">Contribute</a>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-grid">
+      <p>Agent Fridge - local coordination for shared checkouts. Protocol `wcp/0.1`.</p>
+      <nav class="footer-links" aria-label="Footer links">
+        <a href="#top">Back to top</a>
+        <a href="https://github.com/RagnarPitla/agent-fridge">Source</a>
+        <a href="https://github.com/RagnarPitla/agent-fridge/issues">Issues</a>
+        <a href="https://github.com/RagnarPitla/agent-fridge/blob/main/LICENSE">License</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

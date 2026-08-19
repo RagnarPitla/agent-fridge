@@ -74,7 +74,8 @@ prepares docs and release work for PR #43. They share one checkout while narrow
 claims stop path collisions before editing begins. The same pattern works in
 Herdr, tmux, or plain terminals.
 
-[Open the full visual story](docs/assets/visual-story.html) |
+[Read the GitHub Pages article](https://ragnarpitla.github.io/agent-fridge/) |
+[Open the self-contained visual story](docs/assets/visual-story.html) |
 [Run the reproducible before/after demo](#the-actual-failure-this-prevents) |
 [Follow the two-terminal quickstart](docs/quickstart.md)
 
@@ -730,6 +731,7 @@ the repository root cannot assert a claim and cannot block one.
 | [COLLABORATE.md](COLLABORATE.md) | Use Agent Fridge with people and agents |
 | [docs/assets/visual-story.html](docs/assets/visual-story.html) | Public visual walkthrough, compatibility matrix, and a real two-terminal transcript |
 | [docs/social-preview.md](docs/social-preview.md) | Maintainer steps for uploading the GitHub social preview image |
+| [docs/website.md](docs/website.md) | Preview and deploy the GitHub Pages technical publication |
 | [spec/protocol-v0.1.md](spec/protocol-v0.1.md) | The complete protocol: schemas, algorithms, invariants. Enough to reimplement in another language |
 | [spec/exit-codes.md](spec/exit-codes.md) | The exit-code contract (generated) |
 | [docs/quickstart.md](docs/quickstart.md) | A longer walkthrough with two real terminals |
