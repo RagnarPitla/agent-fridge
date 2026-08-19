@@ -90,7 +90,7 @@ type Spec struct {
 	Exits   []string
 }
 
-var globalBool = []string{"json", "quiet", "verbose", "no-color", "yes", "help", "allow-multihost"}
+var globalBool = []string{"json", "quiet", "verbose", "no-color", "yes", "help", "allow-multihost", "allow-secret-like"}
 var globalValue = []string{"repo", "agent", "vendor"}
 
 // Order is the command table order, which usage() prints verbatim.
@@ -117,7 +117,7 @@ func init() {
 		{Name: "reap", Fn: cmdReap, Summary: "Sweep cards that fell off the door.", Bool: []string{"dry-run", "force"}, Value: []string{}, Exits: []string{"E_MUTEX_TIMEOUT"}},
 		{Name: "wait", Fn: cmdWait, Summary: "Wait for a card to come down.", Bool: []string{}, Value: []string{"timeout"}, Exits: []string{"E_WAIT_TIMEOUT", "E_NOT_FOUND"}},
 		{Name: "run", Fn: cmdRun, Summary: "Claim, run a command with automatic check-ins, then release.", Bool: []string{"keep-on-failure"}, Value: []string{"claim", "task", "ttl", "mode"}, Exits: []string{"E_CONFLICT", "E_USAGE"}},
-		{Name: "pin", Fn: cmdPin, Summary: "Pin a durable note to the door.", Bool: []string{"allow-secret-like"}, Value: []string{"kind", "claim", "task"}, Exits: []string{"E_USAGE"}},
+		{Name: "pin", Fn: cmdPin, Summary: "Pin a durable note to the door.", Value: []string{"kind", "claim", "task"}, Exits: []string{"E_USAGE"}},
 		{Name: "log", Fn: cmdLog, Summary: "Read the notes wall.", Bool: []string{"follow"}, Value: []string{"limit", "since", "until", "actor", "type"}, Exits: []string{}},
 		{Name: "board", Fn: cmdBoard, Summary: "Read the door.", Bool: []string{"write", "stdout", "check", "wide"}, Value: []string{}, Exits: []string{"E_DRIFT"}},
 		{Name: "status", Fn: cmdStatus, Summary: "Same data as the door, machine first.", Bool: []string{"mine", "wide", "watch"}, Value: []string{"interval"}, Exits: []string{}},
@@ -264,7 +264,7 @@ func usage() string {
 	lines := []string{
 		fmt.Sprintf("%s %s (protocol %s)", brand.Product, brand.Version, brand.Protocol),
 		"",
-		"A fridge door for your repo. Everyone pins their own note. Nobody erases the board.",
+		brand.Tagline + " Everyone pins their own note. Nobody erases the board.",
 		"",
 		fmt.Sprintf("usage: %s <command> [args] [flags]", brand.Bin),
 		"",
@@ -275,7 +275,7 @@ func usage() string {
 		"",
 		"aliases: "+strings.Join(pairs, ", "),
 		"",
-		"global flags: --json --quiet --verbose --no-color --repo <path> --agent <name> --help",
+		"global flags: --json --quiet --verbose --no-color --repo <path> --agent <name> --allow-secret-like --help",
 		"",
 		fmt.Sprintf("60-second start:  %s init && %s join --agent me && %s claim \"src/**\" --task \"work\" && %s board", brand.Bin, brand.Bin, brand.Bin, brand.Bin),
 		"docs: https://github.com/RagnarPitla/"+brand.Package,

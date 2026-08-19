@@ -566,25 +566,53 @@ type Overlap struct {
 	Paths   []string
 }
 
-// ScopesOverlap is the conservative overlap test of section 6.3. Every
-// uncertain case, including truncated materialisation, resolves to "overlap".
+// ScopesOverlap is the conservative overlap test of section 6.3. Overlap is
+// decided on the patterns themselves, so a pair that can only collide on a file
+// that does not exist yet is still refused. Materialization is consulted only
+// to name the concrete files in the error.
 func ScopesOverlap(a, b Scope, insensitive bool) (Overlap, error) {
 	fold := func(s string) string { return CaseFold(s, insensitive) }
-	for _, pa := range a.Include {
-		for _, pb := range b.Include {
-			if IsRootGlobal(pa) || IsRootGlobal(pb) {
-				return Overlap{true, "global-pattern", []string{pa, pb}}, nil
+	excludedBy := func(scope Scope, pattern string) (bool, error) {
+		for _, e := range scope.Exclude {
+			ok, err := PatternCovers(e, pattern, insensitive)
+			if err != nil {
+				return false, err
 			}
-			la := fold(LiteralPrefix(pa))
-			lb := fold(LiteralPrefix(pb))
-			// Empty prefixes are handled by materialization below; treating them
-			// as nesting here would flag `*.md` against `src/**`, which cannot
-			// collide.
-			if la != "" && lb != "" && (IsPrefixPath(la, lb) || IsPrefixPath(lb, la)) {
-				return Overlap{true, "literal-prefix-nesting", []string{pa, pb}}, nil
+			if ok {
+				return true, nil
 			}
 		}
+		return false, nil
 	}
+	skip := func(pa, pb string) (bool, error) {
+		// An exclude only rules a pair out when it swallows the other side
+		// whole. Anything less and some path could still satisfy both.
+		ea, err := excludedBy(a, pb)
+		if err != nil {
+			return false, err
+		}
+		if ea {
+			return true, nil
+		}
+		return excludedBy(b, pa)
+	}
+
+	for _, pa := range a.Include {
+		for _, pb := range b.Include {
+			if !IsRootGlobal(pa) && !IsRootGlobal(pb) {
+				continue
+			}
+			drop, err := skip(pa, pb)
+			if err != nil {
+				return Overlap{}, err
+			}
+			if drop {
+				continue
+			}
+			return Overlap{true, "global-pattern", []string{pa, pb}}, nil
+		}
+	}
+
 	setB := map[string]bool{}
 	for _, f := range b.Materialized {
 		setB[fold(f)] = true
@@ -595,50 +623,37 @@ func ScopesOverlap(a, b Scope, insensitive bool) (Overlap, error) {
 			hits = append(hits, f)
 		}
 	}
-	if len(hits) > 0 {
-		return Overlap{true, "materialized-intersection", capPaths(hits)}, nil
-	}
-	bMatchers := b.Matchers
-	if len(bMatchers) == 0 {
-		bMatchers = b.Include
-	}
-	bCompiled, err := CompileMatchers(bMatchers, insensitive)
-	if err != nil {
-		return Overlap{}, err
-	}
-	crossA := []string{}
-	for _, f := range a.Materialized {
-		if bCompiled.Match(f) {
-			crossA = append(crossA, f)
-		}
-	}
-	if len(crossA) > 0 {
-		return Overlap{true, "cross-pattern-match", capPaths(crossA)}, nil
-	}
-	aMatchers := a.Matchers
-	if len(aMatchers) == 0 {
-		aMatchers = a.Include
-	}
-	aCompiled, err := CompileMatchers(aMatchers, insensitive)
-	if err != nil {
-		return Overlap{}, err
-	}
-	crossB := []string{}
-	for _, f := range b.Materialized {
-		if aCompiled.Match(f) {
-			crossB = append(crossB, f)
-		}
-	}
-	if len(crossB) > 0 {
-		return Overlap{true, "cross-pattern-match", capPaths(crossB)}, nil
-	}
-	if a.Truncated || b.Truncated {
-		for _, pa := range a.Include {
-			for _, pb := range b.Include {
-				la := fold(LiteralPrefix(pa))
-				lb := fold(LiteralPrefix(pb))
-				if IsPrefixPath(la, lb) || IsPrefixPath(lb, la) {
-					return Overlap{true, "truncated-scope-fallback", []string{pa, pb}}, nil
+
+	for _, pa := range a.Include {
+		for _, pb := range b.Include {
+			drop, err := skip(pa, pb)
+			if err != nil {
+				return Overlap{}, err
+			}
+			if drop {
+				continue
+			}
+			for _, wa := range withSubtree(pa) {
+				for _, wb := range withSubtree(pb) {
+					can, err := PatternsCanIntersect(wa, wb, insensitive)
+					if err != nil {
+						return Overlap{}, err
+					}
+					if !can {
+						continue
+					}
+					if len(hits) > 0 {
+						return Overlap{true, "materialized-intersection", capPaths(hits)}, nil
+					}
+					if fold(pa) == fold(pb) {
+						return Overlap{true, "same-pattern", []string{pa}}, nil
+					}
+					la := fold(LiteralPrefix(pa))
+					lb := fold(LiteralPrefix(pb))
+					if la != "" && lb != "" && (IsPrefixPath(la, lb) || IsPrefixPath(lb, la)) {
+						return Overlap{true, "literal-prefix-nesting", []string{pa, pb}}, nil
+					}
+					return Overlap{true, "pattern-intersection", []string{pa, pb}}, nil
 				}
 			}
 		}

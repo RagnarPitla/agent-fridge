@@ -6,6 +6,8 @@ package fsx
 
 import (
 	"errors"
+	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -98,23 +100,59 @@ func WriteAtomic(finalPath, text, tmpDir string) error {
 
 // CreateExclusive is the write-once path used for notes: O_EXCL means two
 // processes can never end up writing the same file.
-func CreateExclusive(finalPath, text string) error {
-	if err := EnsureDir(filepath.Dir(finalPath)); err != nil {
+func CreateExclusive(finalPath, text string, tmpDir string) error {
+	dir := filepath.Dir(finalPath)
+	if err := EnsureDir(dir); err != nil {
 		return err
 	}
-	f, err := os.OpenFile(finalPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
-	if err != nil {
+	staging := tmpDir
+	if staging == "" {
+		staging = filepath.Join(dir, ".tmp")
+	}
+	if err := EnsureDir(staging); err != nil {
 		return err
+	}
+	tmp := filepath.Join(staging, fmt.Sprintf("%d-%s.tmp", os.Getpid(), util.ULID()))
+	f, err := os.OpenFile(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return errs.New("E_STATE_CORRUPT", "Failed staging "+finalPath+": "+err.Error())
 	}
 	if _, err := f.WriteString(text); err != nil {
 		_ = f.Close()
-		return err
+		UnlinkQuiet(tmp)
+		return errs.New("E_STATE_CORRUPT", "Failed staging "+finalPath+": "+err.Error())
 	}
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
-		return err
+		UnlinkQuiet(tmp)
+		return errs.New("E_STATE_CORRUPT", "Failed staging "+finalPath+": "+err.Error())
 	}
-	return f.Close()
+	if err := f.Close(); err != nil {
+		UnlinkQuiet(tmp)
+		return errs.New("E_STATE_CORRUPT", "Failed staging "+finalPath+": "+err.Error())
+	}
+	// Link, not open+write. A reader that opens the final name always sees the
+	// whole note, because the name only exists once the bytes are on disk.
+	if err := os.Link(tmp, finalPath); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			UnlinkQuiet(tmp)
+			return err
+		}
+		// Filesystems without hard links (some SMB shares, FAT). Rename is
+		// still atomic in content, and the caller's names carry a random id,
+		// so losing link's exclusivity here costs nothing that matters.
+		if Exists(finalPath) {
+			UnlinkQuiet(tmp)
+			return fs.ErrExist
+		}
+		if err := os.Rename(tmp, finalPath); err != nil {
+			UnlinkQuiet(tmp)
+			return err
+		}
+		return nil
+	}
+	UnlinkQuiet(tmp)
+	return nil
 }
 
 // WriteJSONAtomic writes a record in the protocol's canonical JSON form.
@@ -123,8 +161,8 @@ func WriteJSONAtomic(path string, obj jsonx.Obj, tmpDir string) error {
 }
 
 // CreateJSONExclusive writes a write-once record in canonical JSON form.
-func CreateJSONExclusive(path string, obj jsonx.Obj) error {
-	return CreateExclusive(path, jsonx.Stable(obj))
+func CreateJSONExclusive(path string, obj jsonx.Obj, tmpDir string) error {
+	return CreateExclusive(path, jsonx.Stable(obj), tmpDir)
 }
 
 // ReadJSON reads a record, reporting unparseable bytes as E_STATE_CORRUPT

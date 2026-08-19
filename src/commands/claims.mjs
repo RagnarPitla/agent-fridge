@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Chore cards: claim, check, heartbeat, extend, release, reap, wait, guard, run.
+import fs from 'node:fs';
+import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { AppError, EXIT } from '../core/errors.mjs';
 import { emit, warn } from '../core/output.mjs';
 import { withMutex } from '../core/mutex.mjs';
 import {
-  archiveClaim, clearQueueFor, isHeld, listClaims, listQueue, openWorkspace, pin, readClaim, reapStale,
-  removeQueueEntry, requireActor, saveClaim, writeLease, writeQueueEntry, writeSession,
+  archiveClaim, clearQueueFor, isHeld, listClaims, listQueue, mutateSession, openWorkspace, pin, readClaim, reapStale,
+  removeQueueEntry, requireActor, saveClaim, writeLease, writeQueueEntry,
 } from '../core/store.mjs';
-import { maybeRenew } from '../core/renew.mjs';
+import { guardSecrets } from '../core/secrets.mjs';
 import { autoRender } from '../core/render.mjs';
 import {
   defaultCaseInsensitive, isGlobal, materialize, normalizePattern, scopesOverlap,
@@ -83,7 +85,7 @@ function conflictReport(ws, mine, conflicts) {
 
 export async function claim(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   if (!ctx.positional.length) {
     throw new AppError('E_USAGE', 'What do you want to claim?', { hint: `${BIN} claim "src/**" --task "refactor api"` });
   }
@@ -93,6 +95,7 @@ export async function claim(ctx) {
       hint: `${BIN} claim "${ctx.positional[0]}" --task "what you are doing"`,
     });
   }
+  guardSecrets({ '--task': task, '--label': [].concat(ctx.flags.label || []).join(' ') }, { allow: Boolean(ctx.flags['allow-secret-like']) });
   const mode = ctx.flags.mode || 'exclusive';
   if (!['exclusive', 'shared', 'advisory'].includes(mode)) {
     throw new AppError('E_USAGE', `Unknown --mode '${mode}'.`, { hint: 'One of: exclusive, shared, advisory' });
@@ -169,8 +172,7 @@ export async function claim(ctx) {
       };
       saveClaim(ws, record);
       writeLease(ws, record.id, { sessionId: session.id, ttlMs, renewals: 0 });
-      session.tokens = { ...(session.tokens || {}), [record.id]: token };
-      writeSession(ws, session);
+      mutateSession(ws, session, (s2) => { s2.tokens = { ...(s2.tokens || {}), [record.id]: token }; });
       pin(ws, {
         type: 'claim.acquired', actor, session,
         subject: { kind: 'claim', id: record.id },
@@ -296,7 +298,6 @@ function verdict(ctx, command, rows, { requireClaim }) {
 export async function check(ctx) {
   const ws = open(ctx);
   const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
-  maybeRenew(ws, session);
   if (!ctx.positional.length) throw new AppError('E_USAGE', 'Which paths?', { hint: `${BIN} check src/api/routes.ts` });
   const queries = normalizeAll(ws, ctx.positional, { confirmGlobal: true });
   const rows = classify(ws, session, queries);
@@ -306,7 +307,6 @@ export async function check(ctx) {
 export async function guard(ctx) {
   const ws = open(ctx);
   const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
-  maybeRenew(ws, session);
   let inputs = ctx.positional;
   if (ctx.flags.staged) {
     const r = spawnSync('git', ['-C', ws.root, 'diff', '--cached', '--name-only', '-z'], { encoding: 'utf8' });
@@ -322,7 +322,7 @@ export async function guard(ctx) {
 
 export async function heartbeat(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   const ids = [].concat(ctx.flags.claim || []);
   const mine = listClaims(ws).filter((d) => d.claim.sessionId === session.id);
   const targets = ids.length ? mine.filter((d) => ids.includes(d.claim.id)) : mine;
@@ -353,7 +353,7 @@ export async function heartbeat(ctx) {
 
 export async function extend(ctx) {
   const ws = open(ctx);
-  const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   const id = ctx.positional[0];
   if (!id) throw new AppError('E_USAGE', 'Which card?', { hint: `${BIN} extend <claim-id> --ttl 1h` });
   if (!ctx.flags.ttl) throw new AppError('E_USAGE', '--ttl is required.', { hint: `${BIN} extend ${id} --ttl 1h` });
@@ -371,10 +371,11 @@ export async function extend(ctx) {
 
 export async function release(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   const all = Boolean(ctx.flags.all);
   const ids = ctx.positional;
   if (!all && !ids.length) throw new AppError('E_USAGE', 'Which card?', { hint: `${BIN} release <claim-id> | ${BIN} release --all` });
+  guardSecrets({ '--note': ctx.flags.note }, { allow: Boolean(ctx.flags['allow-secret-like']) });
   const outcome = ctx.flags.outcome || 'done';
   if (!['done', 'partial', 'abandoned', 'failed'].includes(outcome)) {
     throw new AppError('E_USAGE', `Unknown --outcome '${outcome}'.`, { hint: 'One of: done, partial, abandoned, failed' });
@@ -408,9 +409,13 @@ export async function release(ctx) {
       }
     }
     const out = [];
+    const dropped = [];
     for (const d of targets) {
-      archiveClaim(ws, d.claim, 'released');
-      if (session.tokens) delete session.tokens[d.claim.id];
+      // The wire format distinguishes a card its owner took down from one an
+      // operator took away. Forcing somebody else's card is `revoked`.
+      const forcedOther = Boolean(ctx.flags.force) && d.claim.sessionId !== session.id;
+      archiveClaim(ws, d.claim, forcedOther ? 'revoked' : 'released');
+      dropped.push(d.claim.id);
       pin(ws, {
         type: 'claim.released', actor, session,
         subject: { kind: 'claim', id: d.claim.id },
@@ -419,7 +424,9 @@ export async function release(ctx) {
       });
       out.push({ claimId: d.claim.id, include: d.claim.scope.include, outcome });
     }
-    writeSession(ws, session);
+    mutateSession(ws, session, (s2) => {
+      for (const id of dropped) if (s2.tokens) delete s2.tokens[id];
+    });
     return out;
   });
   autoRender(ws);
@@ -432,7 +439,7 @@ export async function release(ctx) {
 export async function reap(ctx) {
   const ws = open(ctx);
   let actor = null; let session = null;
-  try { ({ actor, session } = requireActor(ws, { agent: ctx.flags.agent })); } catch { /* reap works without a session */ }
+  try { ({ actor, session } = requireActor(ws, { agent: ctx.flags.agent, mutating: false })); } catch { /* reap works without a session */ }
   const force = Boolean(ctx.flags.force);
   const targets = () => listClaims(ws).filter((d) => d.stale || (force && d.expired));
   if (ctx.flags['dry-run']) {
@@ -496,6 +503,46 @@ export async function wait(ctx) {
   }
 }
 
+const IS_WIN = process.platform === 'win32';
+
+/**
+ * Find what `npm` actually means on this machine.
+ *
+ * On Windows `npm` is `npm.cmd`, and `spawn` with `shell: false` cannot see
+ * that, so `fridge run -- npm test` fails with ENOENT while the same command
+ * works in the terminal. PATHEXT is consulted the way the shell would, and a
+ * batch wrapper is then run through the shell because Node refuses to spawn
+ * `.cmd` and `.bat` directly.
+ */
+function resolveExecutable(cmd, cwd) {
+  if (!IS_WIN) return { file: cmd, useShell: false };
+  const isBatch = (f) => /\.(cmd|bat)$/i.test(f);
+  if (cmd.includes('/') || cmd.includes('\\')) {
+    const abs = path.resolve(cwd, cmd);
+    return { file: abs, useShell: isBatch(abs) };
+  }
+  const exts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
+  if (path.extname(cmd)) {
+    for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+      const full = path.join(dir, cmd);
+      if (fs.existsSync(full)) return { file: full, useShell: isBatch(full) };
+    }
+    return { file: cmd, useShell: isBatch(cmd) };
+  }
+  for (const dir of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
+    for (const ext of exts) {
+      const full = path.join(dir, cmd + ext);
+      if (fs.existsSync(full)) return { file: full, useShell: isBatch(full) };
+    }
+  }
+  // Not found on PATH. Hand it to the shell so the error message comes from
+  // the shell rather than from a bare ENOENT with no context.
+  return { file: cmd, useShell: true };
+}
+
+/** Quote one argument for cmd.exe, which is the only thing that reads the string we build. */
+const winQuote = (a) => (/[\s"^&|<>()]/.test(a) ? `"${String(a).replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"` : a);
+
 export async function run(ctx) {
   const ws = open(ctx);
   if (!ctx.rest.length) {
@@ -523,18 +570,28 @@ export async function run(ctx) {
   const timer = setInterval(() => {
     try {
       const ws2 = open(ctx);
-      const { session } = requireActor(ws2, { agent: ctx.flags.agent });
+      const { session } = requireActor(ws2, { agent: ctx.flags.agent, mutating: true });
       writeLease(ws2, claimId, { sessionId: session.id, ttlMs, renewals: 0 });
     } catch { /* the child matters more than the heartbeat */ }
   }, Math.max(1000, Math.floor(ttlMs / 3)));
   timer.unref?.();
 
-  const code = await new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: 'inherit', cwd: ctx.cwd, shell: false });
-    child.on('error', (e) => resolve(e.code === 'ENOENT' ? 127 : 1));
-    child.on('close', (c, signal) => resolve(signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGKILL: 9 })[signal] || 0) : c ?? 0));
+  const target = resolveExecutable(cmd, ctx.cwd);
+  const outcome = await new Promise((resolve) => {
+    const child = target.useShell
+      ? spawn(`${winQuote(target.file)} ${args.map(winQuote).join(' ')}`.trim(), { stdio: 'inherit', cwd: ctx.cwd, shell: true })
+      : spawn(target.file, args, { stdio: 'inherit', cwd: ctx.cwd, shell: false });
+    // A command that never started is not a command that failed. Say which,
+    // and say why, instead of returning a bare 127.
+    child.on('error', (e) => resolve({ code: e.code === 'ENOENT' ? 127 : 1, spawnError: e }));
+    child.on('close', (c, signal) => resolve({ code: signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGKILL: 9 })[signal] || 0) : c ?? 0 }));
   });
   clearInterval(timer);
+  const code = outcome.code;
+  if (outcome.spawnError) {
+    process.stderr.write(`${BIN} run: could not start '${cmd}': ${outcome.spawnError.code || outcome.spawnError.message}\n`);
+    if (IS_WIN) process.stderr.write(`  looked for '${target.file}' using PATHEXT (${process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD'})\n`);
+  }
 
   if (code !== 0 && ctx.flags['keep-on-failure']) {
     process.stderr.write(`command exited ${code}; keeping card ${claimId} (--keep-on-failure)\n`);

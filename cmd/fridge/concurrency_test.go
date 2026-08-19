@@ -684,7 +684,7 @@ func TestASIGKILLedAgentLeavesReadableState(t *testing.T) {
 	}
 	env := append([]string{}, os.Environ()...)
 	env = append(env, "FRIDGE_RACE_MODE=crash", "FRIDGE_ACTOR=ghost", "NO_COLOR=1",
-		"CRASH_TARGET=src/api/**", "CRASH_TTL=1s")
+		"CRASH_TARGET=src/api/**", "CRASH_TTL=3s")
 	_, _, code := runChild(self, []string{"-test.run=^TestRaceHelperProcess$"}, root, env)
 	if code == 0 {
 		t.Fatalf("the child was asked politely instead of being killed (exit %d)", code)
@@ -695,7 +695,7 @@ func TestASIGKILLedAgentLeavesReadableState(t *testing.T) {
 	if c := fridge(t, root, []string{"claim", "src/api/**", "--task", "take over"}, runOpts{Actor: "survivor"}).Code; c != 10 {
 		t.Errorf("still held while the lease runs, exited %d", c)
 	}
-	time.Sleep(1400 * time.Millisecond)
+	time.Sleep(3400 * time.Millisecond)
 	if c := fridge(t, root, []string{"claim", "src/api/**", "--task", "take over"}, runOpts{Actor: "survivor"}).Code; c != 0 {
 		t.Errorf("released by time with nobody to ask, exited %d", c)
 	}

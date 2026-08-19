@@ -95,10 +95,10 @@ func TestConcurrentWritersNeverInterleave(t *testing.T) {
 func TestCreateExclusiveRefusesToOverwrite(t *testing.T) {
 	root := scratch(t, "fsx")
 	target := filepath.Join(root, "once.txt")
-	if err := CreateExclusive(target, "one\n"); err != nil {
+	if err := CreateExclusive(target, "one\n", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := CreateExclusive(target, "two\n"); err == nil {
+	if err := CreateExclusive(target, "two\n", ""); err == nil {
 		t.Fatalf("second create must fail")
 	}
 	got, _ := ReadTextOr(target)

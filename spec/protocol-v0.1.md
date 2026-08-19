@@ -633,39 +633,89 @@ guessing.
 ### 6.3 Overlap decision
 
 Two scopes A and B overlap if any include pattern of A can match any path that
-any include pattern of B can match.
+any include pattern of B can match. The decision is made on the **patterns**,
+not on the files that happen to exist. A file created one second after both
+claims were granted is exactly the file two agents will collide on, so a test
+that only compares materialised sets is not a conflict test at all.
+
+The supported glob subset (Section 6.2) is a regular language, so "can these two
+patterns both match some string" is decidable, and the implementation decides it
+rather than approximating it.
 
 ```
 overlap(A, B):
   for pa in A.include, pb in B.include:
+      if excludedBy(A, pb) or excludedBy(B, pa):   continue          # Section 6.3.1
       if isRootGlobal(pa) or isRootGlobal(pb):     return true, "global-pattern"
-      la, lb = literalPrefix(pa), literalPrefix(pb)
-      if la != "" and lb != "" and (isPrefixPath(la, lb) or isPrefixPath(lb, la)):
-          return true, "literal-prefix-nesting"
-  if both A and B materialized without truncation:
-      if setIntersect(A.materialized, B.materialized) != {}:
-          return true, "materialized-intersection"
-      return false
-  if either pattern matches any file in the other's materialized set:
-      return true, "cross-pattern-match"
-  return true, "truncated-scope-fallback"  # cannot prove disjoint
+      if fold(pa) == fold(pb):                     return true, "same-pattern"
+      for qa in {pa, pa + "/**"}, qb in {pb, pb + "/**"}:            # Section 6.3.2
+          if patternsCanIntersect(qa, qb):
+              la, lb = literalPrefix(pa), literalPrefix(pb)
+              if la != "" and lb != "" and (isPrefixPath(la, lb) or isPrefixPath(lb, la)):
+                  return true, "literal-prefix-nesting"
+              return true, "pattern-intersection"
+  if setIntersect(A.materialized, B.materialized) != {}:
+      return true, "materialized-intersection"
+  if A.truncated or B.truncated:  return true, "truncated-scope-fallback"
+  return false
 ```
 
+`patternsCanIntersect(pa, pb)` expands braces on both sides, then runs two
+nested dynamic programs: one over path segments, where `**` matches zero or more
+segments, and one over the characters of a single segment, where `*` matches
+zero or more non-separator characters, `?` matches exactly one, and `[...]`
+matches a set. A negated class `[!...]` is treated as intersecting anything,
+which is the safe direction under Invariant I3.
+
+Brace expansion is bounded at 256 alternatives per pattern. Exceeding the bound
+is `E_PATH_INVALID`, never a silent truncation, because a truncated expansion
+would under-report overlap.
+
 `literalPrefix` is the portion of a pattern before its first metacharacter, cut
-back to the last `/`.
+back to the last `/`. It is used only to choose between two reason strings; both
+mean the same thing to a caller. Both prefixes must be non-empty, because an
+empty prefix is a prefix of everything and would mislabel every pattern-only
+collision.
+
+#### 6.3.1 Excludes
+
+By default (`config.paths.strictExcludes: false`) an exclude narrows a scope for
+reporting but does not make two otherwise-overlapping scopes disjoint. The one
+exception is exact subsumption: if an exclude on one side **provably covers the
+whole of** the other side's pattern, that pair cannot collide and is skipped.
+
+`patternCovers(outer, inner)` is deliberately a *sufficient*, not complete,
+test. It returns true only when `outer` and `inner` are the same pattern, or
+when `outer` is `X/**` and `inner` is `X` or lies under `X`, with `X` free of
+metacharacters. Anything cleverer risks proving a disjointness that is not
+there, which is the failure this protocol exists to remove.
+
+#### 6.3.2 Directory intent
+
+Every include pattern `p` is also compared as `p/**`. A claim on a path owns
+that path's subtree the moment the path becomes a directory. Without this,
+`a*/x.ts` and `*b` are judged disjoint, and then somebody runs `mkdir ab`.
+
+The cost is over-reporting: `src/**/test/**` and `src/a/b/spec/x.ts` are
+reported as overlapping, because `src/a/b/spec/x.ts/test/y` matches both once
+`x.ts` becomes a directory. Under Invariant I3 an over-report is a refusal to
+work in parallel, which is recoverable. An under-report is two owners, which is
+not.
 
 **Invariant I3 (conservative overlap).** The overlap test MAY report an overlap
 that does not exist. It MUST NEVER miss one. Every uncertain case, including
-truncated materialisation, resolves to "overlap".
+truncated materialisation and a brace expansion that hit its bound, resolves to
+"overlap" or to an explicit error.
 
 **Invariant I4 (no two held claims overlap).** For any two claims in a held
 state (`active` or `handoff-offered`) owned by different sessions, their scopes
 MUST NOT overlap, unless both are `mode: "shared"`.
 
-Excludes narrow a scope for reporting, but by default they do **not** make two
-otherwise-overlapping scopes disjoint (`config.paths.strictExcludes: false`).
-Proving disjointness from excludes is subtle, and quietly getting it wrong
-recreates the bug this protocol exists to remove.
+**Invariant I5 (decisions read strictly).** Any read whose result feeds an
+overlap decision, an ownership check, or any other mutation MUST fail on an
+unparseable record rather than skipping it. A record that cannot be read is not
+evidence that a path is free. Generated views MAY tolerate an unreadable record,
+but MUST name it in their output rather than omit it silently.
 
 ### 6.4 Modes
 

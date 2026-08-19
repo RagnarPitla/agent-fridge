@@ -7,10 +7,10 @@ import { exists, writeJsonAtomic, writeAtomic } from '../core/fsx.mjs';
 import { nowIso, slug } from '../core/util.mjs';
 import {
   ensureGitAttributes, initWorkspace, joinActor, listActors, listClaims, openWorkspace, pin, readActor,
-  requireActor, resolveActorName, statePaths,
+  requireActor, resolveActorName, statePaths, writeGitignore,
 } from '../core/store.mjs';
-import { maybeRenew } from '../core/renew.mjs';
 import { autoRender, renderDoor } from '../core/render.mjs';
+import { withMutex } from '../core/mutex.mjs';
 import * as adapterTemplates from '../adapters/templates.mjs';
 import { BIN, PACKAGE, PRODUCT, PROTOCOL, STATE_DIR, VERSION } from '../brand.mjs';
 
@@ -24,6 +24,10 @@ export async function init(ctx) {
     ws.config.notes.commit = ctx.flags['commit-notes'] !== 'false';
     writeJsonAtomic(ws.paths.config, ws.config, ws.paths.tmp);
   }
+  // The ignore file has to follow the setting, or notes.commit is a promise
+  // the repository does not keep.
+  writeGitignore(ws);
+  const commitNotes = ws.config.notes.commit !== false;
   const gitattributes = ensureGitAttributes(root);
   let installed = [];
   if (!ctx.flags['no-adapters']) installed = adapterTemplates.install(root, ['agents'], { tmpDir: ws.paths.tmp });
@@ -32,7 +36,7 @@ export async function init(ctx) {
   const text = [
     `The fridge is on the wall.  ${path.join(root, STATE_DIR)}`,
     `  protocol      ${PROTOCOL}`,
-    `  git           ${STATE_DIR}/.gitignore keeps live state local; notes/ and actors/ are shared history`,
+    `  git           ${STATE_DIR}/.gitignore keeps live state local; ${commitNotes ? 'notes/ and actors/ are shared history' : 'notes.commit is false, so notes/ stays local too'}`,
     gitattributes ? '  gitattributes .gitattributes updated (notes are never auto-merged)' : '',
     installed.length ? `  instructions  ${installed.map((r) => `${r.file} (${r.action})` ).join(', ')}` : '',
     '\nNext:',
@@ -74,7 +78,6 @@ export async function join(ctx) {
 export async function whoami(ctx) {
   const ws = openWorkspace({ repo: ctx.flags.repo, cwd: ctx.cwd });
   const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
-  maybeRenew(ws, session);
   const mine = listClaims(ws).filter((d) => d.claim.sessionId === session.id && !d.stale);
   const text = [
     `${actor.name} (${actor.vendor})  session ${session.id}  holding ${mine.length} card(s)`,
@@ -128,9 +131,21 @@ export async function config(ctx) {
     if (!['true', 'false'].includes(value)) throw new AppError('E_USAGE', `Config key '${key}' needs true or false.`);
     parsed = value === 'true';
   }
-  setPath(ws.config, key, parsed);
-  writeJsonAtomic(ws.paths.config, ws.config, ws.paths.tmp);
-  return emit(ctx, 'config', { data: { key, value: parsed, previous: current }, text: `${key} = ${parsed} (was ${current})` });
+  // Re-read inside the mutex and write back only the one key. Two terminals
+  // each setting a different key from a copy they read a second ago would
+  // otherwise each write a whole file, and the second one silently reverts
+  // the first.
+  const previous = await withMutex(ws, 'config', () => {
+    const fresh = openWorkspace({ repo: ws.root, cwd: ctx.cwd });
+    const was = getPath(fresh.config, key);
+    setPath(fresh.config, key, parsed);
+    writeJsonAtomic(fresh.paths.config, fresh.config, fresh.paths.tmp);
+    // notes.commit is only real if the ignore file agrees with it.
+    if (key === 'notes.commit') writeGitignore(fresh);
+    ws.config = fresh.config;
+    return was;
+  });
+  return emit(ctx, 'config', { data: { key, value: parsed, previous }, text: `${key} = ${parsed} (was ${previous})` });
 }
 
 export async function adapters(ctx) {

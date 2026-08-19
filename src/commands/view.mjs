@@ -5,7 +5,8 @@ import { AppError } from '../core/errors.mjs';
 import { emit } from '../core/output.mjs';
 import { writeAtomic, writeJsonAtomic } from '../core/fsx.mjs';
 import { openWorkspace } from '../core/store.mjs';
-import { doorDrift, renderDoor, renderStatusText, snapshot } from '../core/render.mjs';
+import { doorDrift, renderDoor, renderDoorFrom, renderStatusText, snapshot } from '../core/render.mjs';
+import { resolveInsideWorkspace } from '../core/paths.mjs';
 import { sleep } from '../core/util.mjs';
 import { BIN } from '../brand.mjs';
 
@@ -44,11 +45,13 @@ export async function status(ctx) {
 
 export async function render(ctx) {
   const ws = open(ctx);
-  const doc = renderDoor(ws);
+  // One snapshot for the body, the stamp and status.json, so all three
+  // describe the same instant.
   const snap = snapshot(ws);
+  const doc = renderDoorFrom(snap);
   const targets = [
-    ...(ctx.flags.output ? [path.resolve(ws.root, ctx.flags.output)] : [ws.paths.door]),
-    ...(ws.config.door.extraTargets || []).map((t) => path.resolve(ws.root, t)),
+    ...(ctx.flags.output ? [resolveInsideWorkspace(ws.root, ctx.flags.output, '--output')] : [ws.paths.door]),
+    ...(ws.config.door.extraTargets || []).map((t) => resolveInsideWorkspace(ws.root, t, 'door.extraTargets entry')),
   ];
   if (ctx.flags.check) {
     const drifted = targets.filter((t) => doorDrift(ws, readOr(t)).drift);

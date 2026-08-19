@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { AppError, EXIT, EXIT_DOC } from './core/errors.mjs';
 import { emitError } from './core/output.mjs';
-import { BIN, PACKAGE, PRODUCT, PROTOCOL, VERSION } from './brand.mjs';
+import { BIN, PACKAGE, PRODUCT, PROTOCOL, TAGLINE, VERSION } from './brand.mjs';
 import * as workspace from './commands/workspace.mjs';
 import * as claims from './commands/claims.mjs';
 import * as notes from './commands/notes.mjs';
@@ -10,7 +10,7 @@ import * as view from './commands/view.mjs';
 import * as coord from './commands/coord.mjs';
 import * as conformance from './commands/conform.mjs';
 
-const GLOBAL_BOOL = ['json', 'quiet', 'verbose', 'no-color', 'yes', 'help', 'allow-multihost'];
+const GLOBAL_BOOL = ['json', 'quiet', 'verbose', 'no-color', 'yes', 'help', 'allow-multihost', 'allow-secret-like'];
 const GLOBAL_VALUE = ['repo', 'agent', 'vendor'];
 
 export const COMMANDS = {
@@ -26,7 +26,7 @@ export const COMMANDS = {
   reap: { fn: claims.reap, summary: 'Sweep cards that fell off the door.', bool: ['dry-run', 'force'], value: [], exits: ['E_MUTEX_TIMEOUT'] },
   wait: { fn: claims.wait, summary: 'Wait for a card to come down.', bool: [], value: ['timeout'], exits: ['E_WAIT_TIMEOUT', 'E_NOT_FOUND'] },
   run: { fn: claims.run, summary: 'Claim, run a command with automatic check-ins, then release.', bool: ['keep-on-failure'], value: ['claim', 'task', 'ttl', 'mode'], exits: ['E_CONFLICT', 'E_USAGE'] },
-  pin: { fn: notes.pin, summary: 'Pin a durable note to the door.', bool: ['allow-secret-like'], value: ['kind', 'claim', 'task'], exits: ['E_USAGE'] },
+  pin: { fn: notes.pin, summary: 'Pin a durable note to the door.', bool: [], value: ['kind', 'claim', 'task'], exits: ['E_USAGE'] },
   log: { fn: notes.log, summary: 'Read the notes wall.', bool: ['follow'], value: ['limit', 'since', 'until', 'actor', 'type'], exits: [] },
   board: { fn: view.board, summary: 'Read the door.', bool: ['write', 'stdout', 'check', 'wide'], value: [], exits: ['E_DRIFT'] },
   status: { fn: view.status, summary: 'Same data as the door, machine first.', bool: ['mine', 'wide', 'watch'], value: ['interval'], exits: [] },
@@ -92,7 +92,7 @@ function usage() {
   return [
     `${PRODUCT} ${VERSION} (protocol ${PROTOCOL})`,
     '',
-    'A fridge door for your repo. Everyone pins their own note. Nobody erases the board.',
+    `${TAGLINE} Everyone pins their own note. Nobody erases the board.`,
     '',
     `usage: ${BIN} <command> [args] [flags]`,
     '',
@@ -101,7 +101,7 @@ function usage() {
     '',
     'aliases: ' + Object.entries(ALIASES).map(([a, b]) => `${a}=${b}`).join(', '),
     '',
-    'global flags: --json --quiet --verbose --no-color --repo <path> --agent <name> --help',
+    'global flags: --json --quiet --verbose --no-color --repo <path> --agent <name> --allow-secret-like --help',
     '',
     `60-second start:  ${BIN} init && ${BIN} join --agent me && ${BIN} claim "src/**" --task "work" && ${BIN} board`,
     `docs: https://github.com/RagnarPitla/${PACKAGE}`,

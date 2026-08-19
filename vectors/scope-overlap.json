@@ -1,24 +1,361 @@
 {
   "protocol": "wcp/0.1",
   "title": "Scope overlap conformance vectors",
-  "note": "Invariant I3: overlap may over-report, it must never under-report. Every case here is one an implementation must get exactly right.",
+  "note": "Invariant I3: overlap may over-report, it must never under-report. Every case here is one an implementation must get exactly right. Overlap is decided on the patterns, so a collision on a file that does not exist yet counts, and a claimed path is treated as covering its subtree.",
   "cases": [
-    { "name": "identical files", "a": ["src/api/routes.ts"], "b": ["src/api/routes.ts"], "overlap": true },
-    { "name": "different files in one directory", "a": ["src/api/routes.ts"], "b": ["src/api/db.ts"], "overlap": false },
-    { "name": "file inside a claimed directory", "a": ["src/api/**"], "b": ["src/api/routes.ts"], "overlap": true, "reason": "literal-prefix-nesting" },
-    { "name": "directory inside a claimed tree", "a": ["src/**"], "b": ["src/api/**"], "overlap": true, "reason": "literal-prefix-nesting" },
-    { "name": "the nesting check works in both directions", "a": ["src/api/**"], "b": ["src/**"], "overlap": true, "reason": "literal-prefix-nesting" },
-    { "name": "sibling directories are disjoint", "a": ["src/api/**"], "b": ["src/ui/**"], "overlap": false },
-    { "name": "a prefix that is not a path boundary is not nesting", "a": ["src/api/**"], "b": ["src/apiv2/**"], "overlap": false },
-    { "name": "extension globs in the same directory overlap", "a": ["src/api/*.ts"], "b": ["src/api/*.js"], "overlap": true },
-    { "name": "a deep glob covers a nested file", "a": ["src/**/*.ts"], "b": ["src/api/routes.ts"], "overlap": true },
-    { "name": "root globstar covers everything", "a": ["**"], "b": ["docs/guide.md"], "overlap": true, "reason": "global-pattern" },
-    { "name": "root globstar overlaps itself", "a": ["**"], "b": ["**"], "overlap": true, "reason": "global-pattern" },
-    { "name": "top-level files are disjoint from directories", "a": ["README.md"], "b": ["src/**"], "overlap": false },
-    { "name": "multi-pattern scopes overlap if any pair does", "a": ["docs/**", "src/api/**"], "b": ["src/api/db.ts"], "overlap": true },
-    { "name": "multi-pattern scopes stay disjoint when no pair overlaps", "a": ["docs/**", "src/api/**"], "b": ["src/ui/**", "README.md"], "overlap": false },
-    { "name": "brace alternation overlaps one of its branches", "a": ["src/{api,ui}/**"], "b": ["src/ui/app.tsx"], "overlap": true },
-    { "name": "brace alternation stays disjoint from an unlisted branch", "a": ["src/{api,ui}/**"], "b": ["docs/guide.md"], "overlap": false },
-    { "name": "a bare directory name nests like a tree", "a": ["src/api"], "b": ["src/api/routes.ts"], "overlap": true }
+    {
+      "name": "identical files",
+      "a": [
+        "src/api/routes.ts"
+      ],
+      "b": [
+        "src/api/routes.ts"
+      ],
+      "overlap": true
+    },
+    {
+      "name": "different files in one directory",
+      "a": [
+        "src/api/routes.ts"
+      ],
+      "b": [
+        "src/api/db.ts"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "file inside a claimed directory",
+      "a": [
+        "src/api/**"
+      ],
+      "b": [
+        "src/api/routes.ts"
+      ],
+      "overlap": true,
+      "reason": "literal-prefix-nesting"
+    },
+    {
+      "name": "directory inside a claimed tree",
+      "a": [
+        "src/**"
+      ],
+      "b": [
+        "src/api/**"
+      ],
+      "overlap": true,
+      "reason": "literal-prefix-nesting"
+    },
+    {
+      "name": "the nesting check works in both directions",
+      "a": [
+        "src/api/**"
+      ],
+      "b": [
+        "src/**"
+      ],
+      "overlap": true,
+      "reason": "literal-prefix-nesting"
+    },
+    {
+      "name": "sibling directories are disjoint",
+      "a": [
+        "src/api/**"
+      ],
+      "b": [
+        "src/ui/**"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "a prefix that is not a path boundary is not nesting",
+      "a": [
+        "src/api/**"
+      ],
+      "b": [
+        "src/apiv2/**"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "extension globs in the same directory are disjoint",
+      "a": [
+        "src/api/*.ts"
+      ],
+      "b": [
+        "src/api/*.js"
+      ],
+      "overlap": false,
+      "note": "No filename ends with both .ts and .js. Earlier builds reported these as overlapping because they compared literal prefixes; that answer was safe but wrong, and the same imprecision hid the real collisions below."
+    },
+    {
+      "name": "a deep glob covers a nested file",
+      "a": [
+        "src/**/*.ts"
+      ],
+      "b": [
+        "src/api/routes.ts"
+      ],
+      "overlap": true
+    },
+    {
+      "name": "root globstar covers everything",
+      "a": [
+        "**"
+      ],
+      "b": [
+        "docs/guide.md"
+      ],
+      "overlap": true,
+      "reason": "global-pattern"
+    },
+    {
+      "name": "root globstar overlaps itself",
+      "a": [
+        "**"
+      ],
+      "b": [
+        "**"
+      ],
+      "overlap": true,
+      "reason": "global-pattern"
+    },
+    {
+      "name": "top-level files are disjoint from directories",
+      "a": [
+        "README.md"
+      ],
+      "b": [
+        "src/**"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "multi-pattern scopes overlap if any pair does",
+      "a": [
+        "docs/**",
+        "src/api/**"
+      ],
+      "b": [
+        "src/api/db.ts"
+      ],
+      "overlap": true
+    },
+    {
+      "name": "multi-pattern scopes stay disjoint when no pair overlaps",
+      "a": [
+        "docs/**",
+        "src/api/**"
+      ],
+      "b": [
+        "src/ui/**",
+        "README.md"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "brace alternation overlaps one of its branches",
+      "a": [
+        "src/{api,ui}/**"
+      ],
+      "b": [
+        "src/ui/app.tsx"
+      ],
+      "overlap": true
+    },
+    {
+      "name": "brace alternation stays disjoint from an unlisted branch",
+      "a": [
+        "src/{api,ui}/**"
+      ],
+      "b": [
+        "docs/guide.md"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "a bare directory name nests like a tree",
+      "a": [
+        "src/api"
+      ],
+      "b": [
+        "src/api/routes.ts"
+      ],
+      "overlap": true
+    },
+    {
+      "name": "a star pattern collides with a future file that does not exist yet",
+      "a": [
+        "*.md"
+      ],
+      "b": [
+        "CHANGELOG.md"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection",
+      "note": "Nothing on disk matches either pattern. Comparing materialized file lists answers 'no' and hands the same future file to two owners."
+    },
+    {
+      "name": "two star patterns collide on a directory neither one names",
+      "a": [
+        "a*/x.ts"
+      ],
+      "b": [
+        "*b/x.ts"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection",
+      "note": "Both match ab/x.ts. Neither has a literal prefix, so a prefix comparison cannot see it."
+    },
+    {
+      "name": "star patterns whose literal parts cannot agree stay disjoint",
+      "a": [
+        "a*/x.ts"
+      ],
+      "b": [
+        "b*/x.ts"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "a top-level star pattern collides with a future top-level file",
+      "a": [
+        "*.json"
+      ],
+      "b": [
+        "package.json"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection"
+    },
+    {
+      "name": "a top-level star pattern does not reach into a directory",
+      "a": [
+        "*.md"
+      ],
+      "b": [
+        "docs/**"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "a claimed path covers files that will appear under it",
+      "a": [
+        "build"
+      ],
+      "b": [
+        "build/out/app.js"
+      ],
+      "overlap": true,
+      "reason": "literal-prefix-nesting",
+      "note": "build may not be a directory yet. Claiming a path claims what will live under it."
+    },
+    {
+      "name": "a single-segment star can become a directory over a deeper claim",
+      "a": [
+        "*b"
+      ],
+      "b": [
+        "ab/x.ts"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection"
+    },
+    {
+      "name": "question marks collide with any single character",
+      "a": [
+        "?.ts"
+      ],
+      "b": [
+        "a.ts"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection"
+    },
+    {
+      "name": "character classes that share a member collide",
+      "a": [
+        "src/[abc].ts"
+      ],
+      "b": [
+        "src/[cde].ts"
+      ],
+      "overlap": true,
+      "reason": "literal-prefix-nesting"
+    },
+    {
+      "name": "character classes with no shared member stay disjoint",
+      "a": [
+        "src/[ab].ts"
+      ],
+      "b": [
+        "src/[cd].ts"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "a negated class is treated as colliding",
+      "a": [
+        "src/[!a].ts"
+      ],
+      "b": [
+        "src/[xy].ts"
+      ],
+      "overlap": true,
+      "reason": "literal-prefix-nesting",
+      "note": "A negated class excludes a finite set from an unbounded alphabet. Answering 'may collide' is the safe direction."
+    },
+    {
+      "name": "brace alternatives collide if any branch does",
+      "a": [
+        "{src,docs}/**"
+      ],
+      "b": [
+        "docs/guide.md"
+      ],
+      "overlap": true,
+      "reason": "pattern-intersection"
+    },
+    {
+      "name": "brace alternatives stay disjoint when no branch collides",
+      "a": [
+        "{src,lib}/**"
+      ],
+      "b": [
+        "docs/guide.md"
+      ],
+      "overlap": false
+    },
+    {
+      "name": "a globstar in the middle reaches any depth",
+      "a": [
+        "src/**/test/**"
+      ],
+      "b": [
+        "src/a/b/test/x.ts"
+      ],
+      "overlap": true
+    },
+    {
+      "name": "a globstar in the middle collides once a leaf could become a directory",
+      "a": [
+        "src/**/test/**"
+      ],
+      "b": [
+        "src/a/b/spec/x.ts"
+      ],
+      "overlap": true,
+      "reason": "literal-prefix-nesting",
+      "note": "src/a/b/spec/x.ts/test/y matches both once x.ts is a directory. Claiming a path claims its subtree, so this over-reports for a path that stays a file. Over-reporting costs a claim; under-reporting costs the file."
+    },
+    {
+      "name": "a similar filename is not a prefix collision",
+      "a": [
+        "README.md"
+      ],
+      "b": [
+        "README.md.bak"
+      ],
+      "overlap": false
+    }
   ]
 }

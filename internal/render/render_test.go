@@ -112,7 +112,7 @@ func TestSnapshotShapeIsStable(t *testing.T) {
 	s := Snapshot(ws)
 	// Exactly the keys src/core/render.mjs emits, no more and no fewer:
 	// views/status.json is consumed by both implementations.
-	want := []string{"claims", "generatedAt", "notes", "waiting", "workspaceId"}
+	want := []string{"claims", "corrupt", "generatedAt", "notes", "waiting", "workspaceId"}
 	for _, key := range want {
 		if _, ok := s[key]; !ok {
 			t.Errorf("snapshot is missing %q", key)

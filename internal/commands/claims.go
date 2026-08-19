@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/output"
 	"github.com/RagnarPitla/agent-fridge/internal/paths"
 	"github.com/RagnarPitla/agent-fridge/internal/render"
+	"github.com/RagnarPitla/agent-fridge/internal/secrets"
 	"github.com/RagnarPitla/agent-fridge/internal/store"
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
@@ -93,6 +95,7 @@ func buildScope(ws *store.Workspace, include, exclude []string) (jsonx.Obj, erro
 func scopeFrom(o jsonx.Obj) paths.Scope {
 	return paths.Scope{
 		Include:      o.Strings("include"),
+		Exclude:      o.Strings("exclude"),
 		Materialized: o.Strings("materialized"),
 		Truncated:    o.Bool("materializedTruncated"),
 		Matchers:     o.Strings("matchers"),
@@ -164,8 +167,13 @@ func cmdClaim(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	actor, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
+		return 0, err
+	}
+	if err := secrets.Guard(map[string]string{
+		"--task": ctx.Flags.Str("task"), "--label": strings.Join(ctx.Flags.List("label"), " "),
+	}, ctx.Flags.Bool("allow-secret-like")); err != nil {
 		return 0, err
 	}
 	if len(ctx.Positional) == 0 {
@@ -236,7 +244,11 @@ func cmdClaim(ctx *Ctx) (int, error) {
 			}
 			mineScope := scopeFrom(scope)
 			existing := []store.Decorated{}
-			for _, d := range store.ListClaims(ws, true) {
+			all, e := store.ListClaimsStrict(ws, true)
+			if e != nil {
+				return e
+			}
+			for _, d := range all {
 				if !d.Stale && store.IsHeld(d.Claim) {
 					existing = append(existing, d)
 				}
@@ -503,7 +515,11 @@ func cmdClaim(ctx *Ctx) (int, error) {
 func classify(ws *store.Workspace, session jsonx.Obj, queries []string) (jsonx.Arr, error) {
 	insensitive := paths.DefaultCaseInsensitive(ws.Config.Str("paths.caseSensitivity"))
 	active := []store.Decorated{}
-	for _, d := range store.ListClaims(ws, true) {
+	all, err := store.ListClaimsStrict(ws, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range all {
 		if !d.Stale && store.IsHeld(d.Claim) {
 			active = append(active, d)
 		}
@@ -675,7 +691,7 @@ func cmdHeartbeat(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	_, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	_, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
 		return 0, err
 	}
@@ -767,7 +783,7 @@ func cmdExtend(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	_, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	_, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
 		return 0, err
 	}
@@ -778,7 +794,10 @@ func cmdExtend(ctx *Ctx) (int, error) {
 	if ctx.Flags.Str("ttl") == "" {
 		return 0, errs.New("E_USAGE", "--ttl is required.").WithHint(fmt.Sprintf("%s extend %s --ttl 1h", brand.Bin, id))
 	}
-	d := store.ReadClaim(ws, id)
+	d, err := store.ReadClaim(ws, id)
+	if err != nil {
+		return 0, err
+	}
 	if d == nil {
 		return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s.", id)).WithHint(brand.Bin + " board")
 	}
@@ -812,8 +831,12 @@ func cmdRelease(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	actor, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
+		return 0, err
+	}
+	if err := secrets.Guard(map[string]string{"--note": ctx.Flags.Str("note")},
+		ctx.Flags.Bool("allow-secret-like")); err != nil {
 		return 0, err
 	}
 	all := ctx.Flags.Bool("all")
@@ -844,7 +867,10 @@ func cmdRelease(ctx *Ctx) (int, error) {
 		if !all {
 			targets = nil
 			for _, id := range ids {
-				d := store.ReadClaim(ws, id)
+				d, e := store.ReadClaim(ws, id)
+				if e != nil {
+					return e
+				}
 				if d == nil {
 					inner = errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s.", id)).WithHint(brand.Bin + " board")
 					return nil
@@ -874,7 +900,14 @@ func cmdRelease(ctx *Ctx) (int, error) {
 			}
 		}
 		for _, d := range targets {
-			if _, e := store.ArchiveClaim(ws, d.Claim, "released"); e != nil {
+			// The wire format distinguishes a card its owner took down from
+			// one an operator took away. Forcing somebody else's card is
+			// `revoked`.
+			finalState := "released"
+			if ctx.Flags.Bool("force") && d.Claim.Str("sessionId") != session.Str("id") {
+				finalState = "revoked"
+			}
+			if _, e := store.ArchiveClaim(ws, d.Claim, finalState); e != nil {
 				return e
 			}
 			if tokens := session.ObjAt("tokens"); tokens != nil {
@@ -1015,7 +1048,10 @@ func cmdWait(ctx *Ctx) (int, error) {
 		return 0, err
 	}
 	started := util.NowMs()
-	initial := store.ReadClaim(ws, id)
+	initial, err := store.ReadClaim(ws, id)
+	if err != nil {
+		return 0, err
+	}
 	if initial == nil {
 		return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s. It may already be gone.", id)).
 			WithHint(brand.Bin + " board")
@@ -1036,7 +1072,10 @@ func cmdWait(ctx *Ctx) (int, error) {
 		}
 	}()
 	for {
-		d := store.ReadClaim(ws, id)
+		d, err := store.ReadClaim(ws, id)
+		if err != nil {
+			return 0, err
+		}
 		if d == nil || d.Stale {
 			waited := util.NowMs() - started
 			return ctx.emit("wait", output.Result{
@@ -1116,7 +1155,7 @@ func cmdRun(ctx *Ctx) (int, error) {
 				if err != nil {
 					continue
 				}
-				_, session, err := store.RequireActor(ws2, ctx.Flags.Str("agent"), "")
+				_, session, err := store.RequireActorMutating(ws2, ctx.Flags.Str("agent"), "")
 				if err != nil {
 					continue
 				}
@@ -1129,7 +1168,14 @@ func cmdRun(ctx *Ctx) (int, error) {
 	}()
 
 	code := 0
-	child := exec.Command(ctx.Rest[0], ctx.Rest[1:]...)
+	// Resolve before spawning so a command that never started can say so.
+	// On Windows npm is npm.cmd, and LookPath is what consults PATHEXT; a
+	// bare 127 with no explanation is the worst possible answer here.
+	target := ctx.Rest[0]
+	if resolved, lookErr := exec.LookPath(target); lookErr == nil {
+		target = resolved
+	}
+	child := exec.Command(target, ctx.Rest[1:]...)
 	child.Dir = ctx.Cwd
 	child.Stdin = os.Stdin
 	child.Stdout = os.Stdout
@@ -1140,10 +1186,22 @@ func cmdRun(ctx *Ctx) (int, error) {
 			if code < 0 {
 				code = 128 + signalNumber(ee)
 			}
-		} else if isNotFound(err) {
-			code = 127
 		} else {
-			code = 1
+			// A command that never started is not a command that failed.
+			// Say which, and say why, instead of returning a bare 127.
+			if isNotFound(err) {
+				code = 127
+			} else {
+				code = 1
+			}
+			fmt.Fprintf(ctx.Out.Stderr, "%s run: could not start '%s': %v\n", brand.Bin, ctx.Rest[0], err)
+			if runtime.GOOS == "windows" {
+				pathext := os.Getenv("PATHEXT")
+				if pathext == "" {
+					pathext = ".COM;.EXE;.BAT;.CMD"
+				}
+				fmt.Fprintf(ctx.Out.Stderr, "  looked for '%s' using PATHEXT (%s)\n", target, pathext)
+			}
 		}
 	}
 	close(stop)

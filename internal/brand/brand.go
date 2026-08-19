@@ -6,6 +6,7 @@ package brand
 
 const (
 	Product  = "Agent Fridge"
+	Tagline  = "The shared whiteboard for AI coding agents."
 	Package  = "agent-fridge"
 	Bin      = "fridge"
 	Version  = "0.2.1"

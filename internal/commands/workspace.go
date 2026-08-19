@@ -15,6 +15,7 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/errs"
 	"github.com/RagnarPitla/agent-fridge/internal/fsx"
 	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
+	"github.com/RagnarPitla/agent-fridge/internal/mutex"
 	"github.com/RagnarPitla/agent-fridge/internal/output"
 	"github.com/RagnarPitla/agent-fridge/internal/render"
 	"github.com/RagnarPitla/agent-fridge/internal/store"
@@ -49,6 +50,15 @@ func cmdInit(ctx *Ctx) (int, error) {
 			return 0, err
 		}
 	}
+	// The ignore file has to agree with notes.commit, or the setting is only
+	// documentation.
+	if err := store.WriteGitignore(ws); err != nil {
+		return 0, err
+	}
+	commitNotes := true
+	if v, ok := ws.Config.Get("notes.commit").(bool); ok {
+		commitNotes = v
+	}
 	gitattributes := store.EnsureGitAttributes(root)
 	installed := []adapters.Status{}
 	if !ctx.Flags.Bool("no-adapters") {
@@ -69,7 +79,7 @@ func cmdInit(ctx *Ctx) (int, error) {
 	parts := []string{
 		fmt.Sprintf("The fridge is on the wall.  %s", filepath.Join(root, brand.StateDir)),
 		fmt.Sprintf("  protocol      %s", brand.Protocol),
-		fmt.Sprintf("  git           %s/.gitignore keeps live state local; notes/ and actors/ are shared history", brand.StateDir),
+		fmt.Sprintf("  git           %s/.gitignore keeps live state local; %s", brand.StateDir, gitNotesLine(commitNotes)),
 	}
 	if gitattributes {
 		parts = append(parts, "  gitattributes .gitattributes updated (notes are never auto-merged)")
@@ -312,15 +322,37 @@ func cmdConfig(ctx *Ctx) (int, error) {
 		}
 		parsed = value == "true"
 	}
-	if err := ws.Config.Set(key, parsed); err != nil {
-		return 0, err
-	}
-	if err := fsx.WriteJSONAtomic(ws.Paths.Config, ws.Config, ws.Paths.Tmp); err != nil {
+	// Re-read inside the mutex and write back only the one key. Two terminals
+	// each setting a different key from a copy they read a second ago would
+	// otherwise each write a whole file, and the second one silently reverts
+	// the first.
+	var previous any
+	if err := mutex.With(ws, "config", func() error {
+		fresh, e := store.Open(store.OpenOptions{Repo: ws.Root, Cwd: ctx.Cwd, RequireInit: true})
+		if e != nil {
+			return e
+		}
+		previous = fresh.Config.Get(key)
+		if e := fresh.Config.Set(key, parsed); e != nil {
+			return e
+		}
+		if e := fsx.WriteJSONAtomic(fresh.Paths.Config, fresh.Config, fresh.Paths.Tmp); e != nil {
+			return e
+		}
+		// notes.commit is only real if the ignore file agrees with it.
+		if key == "notes.commit" {
+			if e := store.WriteGitignore(fresh); e != nil {
+				return e
+			}
+		}
+		ws.Config = fresh.Config
+		return nil
+	}, nil); err != nil {
 		return 0, err
 	}
 	return ctx.emit("config", output.Result{
-		Data: jsonx.Obj{"key": key, "value": parsed, "previous": current},
-		Text: fmt.Sprintf("%s = %s (was %s)", key, scalarText(parsed), scalarText(current)),
+		Data: jsonx.Obj{"key": key, "value": parsed, "previous": previous},
+		Text: fmt.Sprintf("%s = %s (was %s)", key, scalarText(parsed), scalarText(previous)),
 	})
 }
 
@@ -689,4 +721,11 @@ func sliceStr(s string, n int) string {
 		return string(r[:n])
 	}
 	return s
+}
+
+func gitNotesLine(commitNotes bool) string {
+	if commitNotes {
+		return "notes/ and actors/ are shared history"
+	}
+	return "notes.commit is false, so notes/ stays local too"
 }

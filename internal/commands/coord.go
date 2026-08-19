@@ -18,7 +18,9 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
 	"github.com/RagnarPitla/agent-fridge/internal/mutex"
 	"github.com/RagnarPitla/agent-fridge/internal/output"
+	"github.com/RagnarPitla/agent-fridge/internal/paths"
 	"github.com/RagnarPitla/agent-fridge/internal/render"
+	"github.com/RagnarPitla/agent-fridge/internal/secrets"
 	"github.com/RagnarPitla/agent-fridge/internal/store"
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
@@ -30,8 +32,13 @@ func cmdHandoff(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	actor, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
+		return 0, err
+	}
+	if err := secrets.Guard(map[string]string{
+		"--note": ctx.Flags.Str("note"), "--reason": ctx.Flags.Str("reason"),
+	}, ctx.Flags.Bool("allow-secret-like")); err != nil {
 		return 0, err
 	}
 	id := ""
@@ -60,7 +67,10 @@ func cmdHandoff(ctx *Ctx) (int, error) {
 		return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("Nobody named '%s' is on this door.", to)).
 			WithHint("Known: " + known)
 	}
-	d := store.ReadClaim(ws, id)
+	d, err := store.ReadClaim(ws, id)
+	if err != nil {
+		return 0, err
+	}
 	if d == nil {
 		return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s.", id)).WithHint(brand.Bin + " board")
 	}
@@ -82,16 +92,46 @@ func cmdHandoff(ctx *Ctx) (int, error) {
 		"scope": strArr(d.Claim.Strings("scope.include")), "task": d.Claim.Get("task"),
 		"state": "offered", "writer": ws.Config.Str("writer"),
 	}
+	var inner error
 	if err := mutex.With(ws, "handoff", func() error {
+		// Re-read under the mutex. Everything decided from the copy above
+		// could be one accept out of date.
+		live, e := store.ReadClaim(ws, id)
+		if e != nil {
+			return e
+		}
+		if live == nil {
+			inner = errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s.", id)).WithHint(brand.Bin + " board")
+			return nil
+		}
+		if live.Claim.Str("sessionId") != session.Str("id") && !ctx.Flags.Bool("force") {
+			inner = errs.New("E_NOT_OWNER", fmt.Sprintf("Card %s belongs to %s, not you.", id, live.Claim.Str("actorName"))).
+				WithHint("You can only hand off your own cards.")
+			return nil
+		}
+		// One live offer per card. A second offer withdraws the first, so an
+		// unopened invitation in somebody's inbox can never be accepted later.
+		if live.Claim.Str("state") == "handoff-offered" && live.Claim.Str("offeredMessageId") != "" {
+			if prior := store.FindMessage(ws, live.Claim.Str("offeredTo"), live.Claim.Str("offeredMessageId")); prior != nil {
+				if _, e := store.ArchiveMessage(ws, prior, "withdrawn"); e != nil {
+					return e
+				}
+			}
+		}
+		message["scope"] = strArr(live.Claim.Strings("scope.include"))
+		message["task"] = live.Claim.Get("task")
 		if _, e := store.WriteMessage(ws, message); e != nil {
 			return e
 		}
-		return store.SaveClaim(ws, d.Claim.With(jsonx.Obj{
+		return store.SaveClaim(ws, live.Claim.With(jsonx.Obj{
 			"state": "handoff-offered", "offeredTo": target.Str("name"),
 			"offeredMessageId": message.Str("id"), "updatedAt": util.Now(),
 		}))
 	}, nil); err != nil {
 		return 0, err
+	}
+	if inner != nil {
+		return 0, inner
 	}
 	noteSuffix := ""
 	if n := ctx.Flags.Str("note"); n != "" {
@@ -138,7 +178,7 @@ func cmdAccept(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	actor, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
 		return 0, err
 	}
@@ -154,11 +194,44 @@ func cmdAccept(ctx *Ctx) (int, error) {
 	var result jsonx.Obj
 	var inner error
 	if err := mutex.With(ws, "accept", func() error {
-		d := store.ReadClaim(ws, message.Str("claimId"))
+		d, e := store.ReadClaim(ws, message.Str("claimId"))
+		if e != nil {
+			return e
+		}
 		if d == nil {
-			store.DeleteMessage(ws, actor.Str("name"), message.Str("id"))
+			if _, e := store.ArchiveMessage(ws, message, "expired"); e != nil {
+				return e
+			}
 			inner = errs.New("E_NOT_FOUND", fmt.Sprintf("Card %s is already gone.", message.Str("claimId"))).
 				WithHint(brand.Bin + " claim ... to take the work fresh")
+			return nil
+		}
+		// The offer in the inbox is a copy. Only the card says who it is
+		// currently offered to, and only the card knows whether that offer is
+		// still the live one. Without this, an old invitation left in an inbox
+		// can be redeemed after the work has already moved on, and the claim
+		// silently changes hands a second time.
+		if d.Claim.Str("state") != "handoff-offered" ||
+			d.Claim.Str("offeredMessageId") != message.Str("id") ||
+			d.Claim.Str("offeredTo") != actor.Str("name") {
+			if _, e := store.ArchiveMessage(ws, message, "expired"); e != nil {
+				return e
+			}
+			var offerID, offeredTo any
+			if v := d.Claim.Str("offeredMessageId"); v != "" {
+				offerID = v
+			}
+			if v := d.Claim.Str("offeredTo"); v != "" {
+				offeredTo = v
+			}
+			inner = errs.New("E_CONFLICT", fmt.Sprintf("That offer is no longer open: card %s is %s and held by %s.",
+				message.Str("claimId"), d.Claim.Str("state"), d.Claim.Str("actorName"))).
+				WithHint(brand.Bin + " inbox   |   " + brand.Bin + " board").
+				WithDetails(map[string]any{
+					"claimId": message.Str("claimId"), "messageId": message.Str("id"),
+					"holder": d.Claim.Str("actorName"), "claimState": d.Claim.Str("state"),
+					"currentOfferId": offerID, "offeredTo": offeredTo,
+				})
 			return nil
 		}
 		token := util.RandomToken()
@@ -183,16 +256,19 @@ func cmdAccept(ctx *Ctx) (int, error) {
 		if _, e := store.WriteLease(ws, updated.Str("id"), session.Str("id"), int64(updated.Num("ttlMs")), 0); e != nil {
 			return e
 		}
-		tokens := session.ObjAt("tokens")
-		if tokens == nil {
-			tokens = jsonx.Obj{}
-		}
-		tokens[updated.Str("id")] = token
-		session["tokens"] = tokens
-		if e := store.WriteSession(ws, session); e != nil {
+		if e := store.MutateSession(ws, session, func(fresh jsonx.Obj) {
+			tokens := fresh.ObjAt("tokens")
+			if tokens == nil {
+				tokens = jsonx.Obj{}
+			}
+			tokens[updated.Str("id")] = token
+			fresh["tokens"] = tokens
+		}); e != nil {
 			return e
 		}
-		store.DeleteMessage(ws, actor.Str("name"), message.Str("id"))
+		if _, e := store.ArchiveMessage(ws, message, "accepted"); e != nil {
+			return e
+		}
 		result = updated
 		return nil
 	}, nil); err != nil {
@@ -231,8 +307,12 @@ func cmdDecline(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	actor, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
+		return 0, err
+	}
+	if err := secrets.Guard(map[string]string{"--reason": ctx.Flags.Str("reason")},
+		ctx.Flags.Bool("allow-secret-like")); err != nil {
 		return 0, err
 	}
 	if len(ctx.Positional) == 0 {
@@ -245,14 +325,23 @@ func cmdDecline(ctx *Ctx) (int, error) {
 			WithHint(brand.Bin + " inbox")
 	}
 	if err := mutex.With(ws, "decline", func() error {
-		if d := store.ReadClaim(ws, message.Str("claimId")); d != nil {
+		d, e := store.ReadClaim(ws, message.Str("claimId"))
+		if e != nil {
+			return e
+		}
+		// Only clear the offer this message actually refers to. Declining an
+		// old invitation must not cancel whatever offer is live now.
+		if d != nil && d.Claim.Str("state") == "handoff-offered" &&
+			d.Claim.Str("offeredMessageId") == message.Str("id") {
 			if e := store.SaveClaim(ws, d.Claim.With(jsonx.Obj{
 				"state": "active", "offeredTo": nil, "offeredMessageId": nil, "updatedAt": util.Now(),
 			})); e != nil {
 				return e
 			}
 		}
-		store.DeleteMessage(ws, actor.Str("name"), message.Str("id"))
+		if _, e := store.ArchiveMessage(ws, message, "declined"); e != nil {
+			return e
+		}
 		return nil
 	}, nil); err != nil {
 		return 0, err
@@ -346,8 +435,19 @@ func scanWorkspace(ws *store.Workspace) []finding {
 	if !fsx.Exists(ws.Paths.Version) {
 		add("version-missing", "error", brand.StateDir+"/VERSION is missing.", true, "")
 	}
-	if !fsx.Exists(filepath.Join(ws.Paths.Dir, ".gitignore")) {
+	ignoreFile := filepath.Join(ws.Paths.Dir, ".gitignore")
+	if !fsx.Exists(ignoreFile) {
 		add("gitignore-missing", "warn", brand.StateDir+"/.gitignore is missing; live state could be committed.", true, "")
+	} else {
+		commitNotes := true
+		if v, ok := ws.Config.Get("notes.commit").(bool); ok {
+			commitNotes = v
+		}
+		have, _ := fsx.ReadTextOr(ignoreFile)
+		if have != store.GitignoreFor(commitNotes) {
+			add("gitignore-drift", "warn",
+				fmt.Sprintf("%s/.gitignore does not match notes.commit=%t.", brand.StateDir, commitNotes), true, "")
+		}
 	}
 	for _, file := range fsx.WalkJSON(ws.Paths.Dir) {
 		if strings.HasPrefix(file, ws.Paths.Quarantine+string(filepath.Separator)) ||
@@ -451,8 +551,8 @@ func applyFix(ws *store.Workspace, f *finding) error {
 		if err := fsx.WriteAtomic(ws.Paths.Version, brand.Protocol+"\n", ws.Paths.Tmp); err != nil {
 			return err
 		}
-	case f.ID == "gitignore-missing":
-		if err := fsx.WriteAtomic(filepath.Join(ws.Paths.Dir, ".gitignore"), store.Gitignore, ws.Paths.Tmp); err != nil {
+	case f.ID == "gitignore-missing", f.ID == "gitignore-drift":
+		if err := store.WriteGitignore(ws); err != nil {
 			return err
 		}
 	case f.ID == "stale-claims":
@@ -463,7 +563,11 @@ func applyFix(ws *store.Workspace, f *finding) error {
 			return err
 		}
 	case strings.HasPrefix(f.ID, "lease-missing:"):
-		if d := store.ReadClaim(ws, strings.SplitN(f.ID, ":", 2)[1]); d != nil {
+		d, e := store.ReadClaim(ws, strings.SplitN(f.ID, ":", 2)[1])
+		if e != nil {
+			return e
+		}
+		if d != nil {
 			if _, err := store.WriteLease(ws, d.Claim.Str("id"), d.Claim.Str("sessionId"),
 				int64(d.Claim.Num("ttlMs")), 0); err != nil {
 				return err
@@ -477,7 +581,20 @@ func applyFix(ws *store.Workspace, f *finding) error {
 			return err
 		}
 	case f.ID == "mutex-held":
-		fsx.RmRF(ws.Paths.Mutex)
+		// Re-read before removing. Between the scan and here the lock can have
+		// been released and legitimately retaken, and deleting it then would
+		// let a second writer in behind the current holder's back.
+		owner, ok := fsx.ReadJSONSafe(filepath.Join(ws.Paths.Mutex, "owner.json"))
+		ageMs := util.NowMs()
+		dead := false
+		if ok {
+			acquired, _ := util.ParseMs(owner.Str("acquiredAt"))
+			ageMs = util.NowMs() - acquired
+			dead = owner.Str("host") == util.HostID() && !util.ProcessAlive(owner.Int("pid"))
+		}
+		if !ok || dead || ageMs > int64(ws.Config.Num("mutex.staleMs")) {
+			fsx.RmRF(ws.Paths.Mutex)
+		}
 	case f.ID == "door-drift":
 		if err := fsx.WriteAtomic(ws.Paths.Door, render.Door(ws), ws.Paths.Tmp); err != nil {
 			return err
@@ -778,7 +895,11 @@ func cmdSimulate(ctx *Ctx) (int, error) {
 	reportLines = append(reportLines, "", "Result: "+finalVerdict, "")
 	report := strings.Join(reportLines, "\n")
 	if r := ctx.Flags.Str("report"); r != "" {
-		if err := fsx.WriteAtomic(resolveIn(ws.Root, r), report, ws.Paths.Tmp); err != nil {
+		dest, e := paths.ResolveInsideWorkspace(ws.Root, r, "--report")
+		if e != nil {
+			return 0, e
+		}
+		if err := fsx.WriteAtomic(dest, report, ws.Paths.Tmp); err != nil {
 			return 0, err
 		}
 	}
