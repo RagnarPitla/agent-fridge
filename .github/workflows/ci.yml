@@ -260,3 +260,41 @@ jobs:
           mkdir -p sim && cd sim && git init -q .
           node ../bin/fridge.mjs init
           node ../bin/fridge.mjs simulate --agents 6 --duration 20s --seed 1234
+
+  # The install commands in the README are the first thing a stranger runs. They
+  # were only ever verified by hand, and install.ps1 had never been executed on
+  # Windows by anything. These run the published installers on their real
+  # platforms, so a broken install surfaces here rather than in someone's
+  # terminal. They test the latest published release on purpose: that is what a
+  # clean machine actually gets today.
+  install:
+    name: published installer / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Install with install.sh
+        if: runner.os != 'Windows'
+        run: |
+          set -euo pipefail
+          curl -fsSL https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.sh \
+            | sh -s -- --dir "$RUNNER_TEMP/bin"
+          "$RUNNER_TEMP/bin/fridge" version
+          "$RUNNER_TEMP/bin/fridge" conform
+
+      - name: Install with install.ps1
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = Join-Path $env:RUNNER_TEMP 'bin'
+          $script = Join-Path $env:RUNNER_TEMP 'install.ps1'
+          Invoke-RestMethod https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.ps1 |
+            Set-Content -Path $script
+          & $script -Dir $dir
+          & (Join-Path $dir 'fridge.exe') version
+          & (Join-Path $dir 'fridge.exe') conform
+          if ($LASTEXITCODE -ne 0) { throw "conform failed: $LASTEXITCODE" }

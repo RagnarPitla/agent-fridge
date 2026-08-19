@@ -132,10 +132,13 @@ on your `PATH`. Six builds are published for every release:
 
 Every asset has a matching `.sha256`, and `checksums.txt` covers the set.
 
-Both installers verify the checksum before installing, and both take
-`--dir <path>` to choose where the binary lands and `--version v0.2.1` to pin a
-release. With no arguments they use `/usr/local/bin` when it is writable and
-`~/.local/bin` otherwise.
+Both installers verify the checksum before installing, and both let you choose
+the directory and pin a release. The shell installer takes `--dir <path>` and
+`--version v0.2.1`; the PowerShell one takes `-Dir <path>` and `-Version v0.2.1`,
+because that is how PowerShell parameters work. With no arguments `install.sh`
+uses `/usr/local/bin` when it is writable and `~/.local/bin` otherwise, and
+`install.ps1` uses `%LOCALAPPDATA%\Programs\agent-fridge` and adds it to your
+user `PATH`.
 
 ### Have a Go toolchain?
 
@@ -155,16 +158,18 @@ conformance vectors and is diffed against the Go binary command by command.
 npm install -g github:RagnarPitla/agent-fridge
 ```
 
-Node.js 20.11 or newer, zero runtime dependencies. Use it if you already live in
-npm, if you want to read the source in a language you know, or if you are
-vendoring the tool into a JavaScript monorepo. See
+Node.js 20.11 or newer, zero runtime dependencies. Note the `github:` prefix:
+Agent Fridge is not published to the npm registry, so `npx agent-fridge` and
+`npm install -g agent-fridge` do not work. npm installs it straight from this
+repository instead. Use this build if you want to read the source in a language
+you know, or if you are vendoring the tool into a JavaScript monorepo. See
 [two implementations](#two-implementations-one-conformance-suite) for why both exist.
 
 ### Verify
 
 ```bash
 fridge version
-# agent-fridge 0.2.1 (protocol wcp/0.1)
+# agent-fridge 0.2.1  protocol wcp/0.1  go go1.21.13  darwin/arm64
 
 fridge conform
 # Result: CONFORMANT. 62 case(s) passed.

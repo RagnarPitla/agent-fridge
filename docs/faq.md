@@ -156,8 +156,11 @@ INFO   Card clm_01M0D3Z1WDG81DRPWQDTVCQMTG was taken on another machine; livenes
 The protocol reserves exit `41` (`E_FOREIGN_HOST`) and an `--allow-multihost`
 override for this
 ([../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#125-shared-and-networked-filesystems)).
-As of 0.1.0 that refusal is specified but not enforced by the CLI, so do not
-build a workflow that depends on exit `41` stopping you.
+The CLI enforces it: forcing your way onto a card that belongs to another
+actor *and* was taken on another machine exits `41`, and `--allow-multihost`
+is the only way past. That guard is about liveness, not permission - the CLI
+cannot check whether a process on another machine is still running, so it
+refuses to guess.
 
 **The recommendation: do not do this.** Multi-machine coordination is an
 explicit non-goal for v0.1. Give each machine its own clone and coordinate

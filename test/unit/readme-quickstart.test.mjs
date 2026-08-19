@@ -119,3 +119,53 @@ test('every --vendor the docs pass to join is a vendor the CLI accepts', (t) => 
     .map((c) => `${c.where}  --vendor ${c.vendor}`);
   assert.deepEqual(offenders, [], `docs tell people to join with a vendor the CLI rejects.\n${offenders.join('\n')}\nAllowed: ${[...allowed].join(', ')}`);
 });
+
+// Agent Fridge is not on the npm registry. Until `npm publish` actually
+// happens, any doc that tells a reader to run `npx agent-fridge` or
+// `npm install -g agent-fridge` is promising something that fails on a clean
+// machine. The `github:` form installs straight from the repository and does
+// work, so it is the one to use.
+test('no doc claims an npm registry install that does not exist', () => {
+  const published = false;
+  if (published) return;
+
+  const offenders = [];
+  const files = spawnSync('git', ['ls-files', '*.md', '*.json', '*.yml', '*.yaml'], { cwd: REPO, encoding: 'utf8' })
+    .stdout.trim().split('\n').filter(Boolean);
+  const bad = (line) => /\bnpx\s+(-y\s+)?agent-fridge\b/.test(line)
+    || /\bnpm\s+(install|i|add)\b(?![^\n]*github:)[^\n]*\bagent-fridge\b/.test(line);
+
+  for (const rel of files) {
+    const lines = fs.readFileSync(path.join(REPO, rel), 'utf8').split('\n');
+    // In Markdown, only a fenced block is an instruction. Prose *about* a
+    // command - a changelog entry saying it was removed, or a line warning
+    // that it does not work - is the fix, not the bug. Everything in a JSON or
+    // YAML file is executable config, so all of it counts.
+    const markdown = rel.endsWith('.md');
+    let fenced = !markdown;
+    lines.forEach((raw, i) => {
+      if (markdown && /^\s*```/.test(raw)) { fenced = !fenced; return; }
+      if (!fenced) return;
+      if (bad(raw)) offenders.push(`${rel}:${i + 1}  ${raw.trim()}`);
+    });
+  }
+  assert.deepEqual(offenders, [], `these promise an npm registry install that does not exist yet:\n${offenders.join('\n')}\nUse: npm install -g github:RagnarPitla/agent-fridge`);
+});
+
+// The canonical repository moved from RagnarPitla/fridgeboard before the first
+// release. A stale URL in a badge, a link or package.json sends people to a
+// repository that is not this one.
+test('every link points at the canonical repository', () => {
+  const offenders = [];
+  const files = spawnSync('git', ['ls-files'], { cwd: REPO, encoding: 'utf8' })
+    .stdout.trim().split('\n').filter(Boolean);
+  for (const rel of files) {
+    if (rel === 'NOTICE' || rel === 'CHANGELOG.md') continue; // both record the rename on purpose
+    let text;
+    try { text = fs.readFileSync(path.join(REPO, rel), 'utf8'); } catch { continue; }
+    text.split('\n').forEach((line, i) => {
+      if (/github\.com\/RagnarPitla\/fridgeboard/i.test(line)) offenders.push(`${rel}:${i + 1}`);
+    });
+  }
+  assert.deepEqual(offenders, [], `stale repository URL (RagnarPitla/fridgeboard) in:\n${offenders.join('\n')}`);
+});

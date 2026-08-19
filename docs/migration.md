@@ -141,8 +141,12 @@ fridge join --agent migration --vendor human
 fridge migrate --freeze --agent migration
 ```
 
-The CLI accepts an `--author-map` flag on `migrate`. As of 0.1.0 it is parsed
-and then ignored; there is no per-entry re-attribution. Do not plan around it.
+`migrate` takes `--author-map "old=new,other=also"` and re-attributes entry by
+entry. An entry is credited to a mapped name only when a name can be read off
+the entry itself - the `name:` prefix on an update line, or the heading it sits
+under. Entries with no legible author stay credited to the agent running the
+migration, so check the result with `fridge log` rather than assuming every
+line moved.
 
 ---
 
@@ -241,7 +245,7 @@ Nothing changes for the agents yet. You are only making the history safe.
 
 ```bash
 cd /path/to/repo
-npm install --save-dev agent-fridge      # or: npm install -g agent-fridge
+curl -fsSL https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.sh | sh
 
 fridge init --no-adapters
 fridge join --agent migration --vendor human

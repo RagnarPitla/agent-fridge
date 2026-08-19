@@ -16,7 +16,40 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- Canonical URLs. `LICENSE` and `NOTICE` still carried the former name and
+  pointed at `github.com/RagnarPitla/fridgeboard`, which is not this
+  repository. `NOTICE` now records the rename as history instead.
+- Install instructions that could not work. `docs/quickstart.md` opened with
+  `npx agent-fridge` and `npm install -g agent-fridge`, and `docs/interop.md`
+  and `docs/migration.md` repeated the second. Agent Fridge is not on the npm
+  registry, so all of those fail on a clean machine. Every documented install
+  command is now one of the four that were run end to end: the shell
+  installer, the PowerShell installer, `go install`, and
+  `npm install -g github:RagnarPitla/agent-fridge`.
+- `docs/quickstart.md` listed Node.js as a prerequisite. The tool is a single
+  static binary and needs no runtime.
+- Two documents said exit `41` (`E_FOREIGN_HOST`) was "specified but not
+  enforced by the CLI" and told readers not to rely on it. It is enforced;
+  verified by forcing a release of another actor's claim held on another host.
+- `docs/migration.md` said `--author-map` was "parsed and then ignored". It
+  re-attributes entry by entry; verified by a migration that credited a mapped
+  author.
+- The README described `--dir` and `--version` for both installers. The
+  PowerShell one takes `-Dir` and `-Version`, and defaults to a different
+  directory. The sample `fridge version` output did not match the real output.
+- The `v0.1.0` GitHub release advertised a preview under the former name with
+  no downloadable assets. Retitled and re-noted so it says so. `v0.2.0` now
+  carries a note about the liveness bug fixed in `v0.2.1`.
+
+### Added
+
+- A CI job that runs the *published* installers on Linux, macOS and Windows and
+  then runs `fridge conform`. `install.ps1` had never been executed by any
+  automated check.
+- Two guard tests: no document may promise an npm registry install while the
+  package is unpublished, and no tracked file may link to the old repository.
 
 ---
 

@@ -343,7 +343,7 @@ automatically. Add the identity to `devcontainer.json`:
   "containerEnv": {
     "FRIDGE_ACTOR": "devcontainer"
   },
-  "postCreateCommand": "npm install -g agent-fridge && fridge join --agent devcontainer --vendor other"
+  "postCreateCommand": "npm install -g github:RagnarPitla/agent-fridge && fridge join --agent devcontainer --vendor other"
 }
 ```
 
@@ -376,10 +376,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm install -g agent-fridge
+      - name: Install fridge
+        run: |
+          curl -fsSL https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.sh \
+            | sh -s -- --dir "$RUNNER_TEMP/bin"
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
       - name: Instruction blocks are current
         run: fridge adapters check
       - name: Generated views are current
@@ -396,10 +397,11 @@ to treat exit `30` as a warning rather than a failure:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - run: npm install -g agent-fridge
+      - name: Install fridge
+        shell: pwsh
+        run: |
+          irm https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.ps1 `
+            | iex
       - shell: pwsh
         run: |
           fridge adapters check
@@ -458,9 +460,10 @@ INFO   Card clm_01M0D3Z1WDG81DRPWQDTVCQMTG was taken on another machine; livenes
 The protocol reserves exit `41` (`E_FOREIGN_HOST`) and an `--allow-multihost`
 override for operating on another host's claim
 ([../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#125-shared-and-networked-filesystems)).
-As of 0.1.0 that refusal is specified but not yet enforced by the CLI: foreign
-claims are reported by `doctor` and are otherwise treated like local ones. Do
-not rely on exit `41` to stop you.
+The CLI enforces it. `release --force` and `reap --force` exit `41` when the
+card belongs to another actor and was taken on another host, because liveness
+of a process on another machine cannot be checked from here. `--allow-multihost`
+overrides it. `doctor` reports foreign claims either way.
 
 **The recommendation:** do not do this. Multi-machine coordination is an
 explicit non-goal for v0.1
