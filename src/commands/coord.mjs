@@ -5,6 +5,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { AppError } from '../core/errors.mjs';
+import { parseDuration } from '../core/util.mjs';
 import { emit } from '../core/output.mjs';
 import { withMutex } from '../core/mutex.mjs';
 import { exists, listJson, readJsonSafe, rmrf, unlinkQuiet, walkJson, writeAtomic, writeJsonAtomic } from '../core/fsx.mjs';
@@ -292,7 +293,7 @@ const WORKER = fileURLToPath(new URL('../../tools/worker.mjs', import.meta.url))
 export async function simulate(ctx) {
   const ws = open(ctx);
   const agents = Math.max(2, Number(ctx.flags.agents || 6));
-  const durationMs = Math.max(1000, Number(ctx.flags.duration || 8000));
+  const durationMs = Math.max(1000, ctx.flags.duration ? parseDuration(ctx.flags.duration, 'duration') : 8000);
   const seed = Number(ctx.flags.seed || 1234);
   const startedAt = Date.now();
   const workers = [];
@@ -316,7 +317,11 @@ export async function simulate(ctx) {
   const results = await Promise.all(workers);
   const elapsedMs = Date.now() - startedAt;
 
-  const notes = walkJson(ws.paths.notes).map(readJsonSafe).filter((r) => r.ok).map((r) => r.value);
+  // Only grade what this run produced. Claims already on the door when the
+  // simulation started are somebody else's business, and counting them turns a
+  // pre-populated workspace into a false I2 failure.
+  const notes = walkJson(ws.paths.notes).map(readJsonSafe).filter((r) => r.ok).map((r) => r.value)
+    .filter((n) => Date.parse(n.ts) >= startedAt);
   const acquired = notes.filter((n) => n.type === 'claim.acquired');
   const released = notes.filter((n) => n.type === 'claim.released' || n.type === 'claim.expired');
   const denied = notes.filter((n) => n.type === 'claim.denied');
@@ -354,7 +359,7 @@ export async function simulate(ctx) {
 
   const ok = invariants.every((i) => i.ok);
   const report = [
-    '# FridgeBoard concurrency simulation',
+    '# Agent Fridge concurrency simulation',
     '',
     `- agents: ${agents}`,
     `- duration: ${humanMs(elapsedMs)}`,

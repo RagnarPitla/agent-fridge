@@ -1,5 +1,5 @@
 <!-- GENERATED FILE. Edit src/core/errors.mjs, then run: npm run gen -->
-# FridgeBoard exit codes (protocol wcp/0.1)
+# Agent Fridge exit codes (protocol wcp/0.1)
 
 Exit codes are the public API of `fridge`. A script may branch on them.
 They are stable for the whole 0.x line: numbers are never reused or renumbered,
@@ -12,9 +12,11 @@ Rules:
    fallback and no partial success.
 3. All codes are below `126`, so they never collide with the shell's
    "command not found" (127) or "killed by signal" (128+N) range.
-4. `--json` prints the same information on stdout as
-   `{"ok":false,"error":{"code":"E_...","exit":N,...}}`, so callers that cannot
-   read `$?` portably can parse instead.
+4. `--json` prints the same information on stdout, in a key-sorted envelope
+   whose shape is exactly:
+   `{"command":"...","data":null,"error":{"code":"E_...","details":...,"hint":"...","message":"..."},"exitCode":N,"ok":false,"protocol":"wcp/0.1","ts":"..."}`
+   so callers that cannot read `$?` portably can parse `.exitCode` instead.
+   On success the envelope has no `error` key and `ok` is `true`.
 
 | Exit | Code | Meaning |
 | ---: | ---- | ------- |
@@ -36,6 +38,7 @@ Rules:
 | `21` | `E_WAIT_TIMEOUT` | Wait deadline reached. |
 | `22` | `E_QUEUE_ABANDONED` | The queue entry expired or was cancelled. |
 | `30` | `E_DRIFT` | A --check found a problem: doctor findings, unrendered door, or stale adapter block. |
+| `31` | `E_NONCONFORMANT` | This build disagrees with the protocol vectors. Run: fridge conform --verbose |
 | `40` | `E_PATH_INVALID` | Path rejected: traversal, escape, reserved location, or unsupported glob. |
 | `41` | `E_FOREIGN_HOST` | That claim belongs to another host. Pass --allow-multihost to override. |
 

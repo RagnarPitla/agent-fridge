@@ -1,6 +1,6 @@
 {
-  "name": "fridgeboard",
-  "version": "0.1.0",
+  "name": "agent-fridge",
+  "version": "0.2.0",
   "description": "A fridge door for your repo. Multiple AI agents and humans work in one Git checkout without overwriting each other. Local-first, zero dependencies, model-neutral.",
   "keywords": [
     "ai-agents",
@@ -16,18 +16,18 @@
   ],
   "license": "Apache-2.0",
   "author": "Ragnar Pitla",
-  "homepage": "https://github.com/RagnarPitla/fridgeboard#readme",
+  "homepage": "https://github.com/RagnarPitla/agent-fridge#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/RagnarPitla/fridgeboard.git"
+    "url": "git+https://github.com/RagnarPitla/agent-fridge.git"
   },
   "bugs": {
-    "url": "https://github.com/RagnarPitla/fridgeboard/issues"
+    "url": "https://github.com/RagnarPitla/agent-fridge/issues"
   },
   "type": "module",
   "bin": {
     "fridge": "bin/fridge.mjs",
-    "fridgeboard": "bin/fridge.mjs"
+    "agent-fridge": "bin/fridge.mjs"
   },
   "exports": {
     ".": "./src/index.mjs",
@@ -37,6 +37,8 @@
     "bin/",
     "src/",
     "spec/",
+    "skill/",
+    "vectors/",
     "README.md",
     "LICENSE",
     "NOTICE",
@@ -55,6 +57,14 @@
     "gen": "node tools/gen-exit-codes.mjs",
     "gen:check": "node tools/gen-exit-codes.mjs --check",
     "demo": "node tools/demo.mjs",
-    "lint": "node tools/lint.mjs"
+    "lint": "node tools/lint.mjs",
+    "go:build": "node tools/go.mjs build ./...",
+    "go:vet": "node tools/go.mjs vet ./...",
+    "go:test": "node tools/go.mjs test ./...",
+    "go:parity": "node tools/parity.mjs",
+    "go:fmt": "node tools/go.mjs fmt",
+    "go:dist": "node tools/go.mjs dist",
+    "parity": "node tools/parity.mjs",
+    "conform": "node tools/go.mjs run ./cmd/fridge -- conform"
   }
 }

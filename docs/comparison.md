@@ -2,7 +2,7 @@
 
 An honest look at the alternatives, including the several cases where one of them is the better answer.
 
-FridgeBoard solves one narrow problem: **several agents and humans editing the
+Agent Fridge solves one narrow problem: **several agents and humans editing the
 same Git checkout at the same time, without overwriting each other.** Narrow
 problems have many adjacent solutions, and some of them are better than this one
 depending on what you are actually doing.
@@ -99,7 +99,7 @@ project would rather you did that than adopt something you do not need.
   and an overlap rule, at which point you are writing this project.
 - **Expiry.** A `flock` held by a process that is killed with `SIGKILL` is
   released by the kernel, which is good, but a lock represented by a lockfile
-  that a script forgot to delete is held forever. FridgeBoard claims carry a
+  that a script forgot to delete is held forever. Agent Fridge claims carry a
   lease with a TTL, so a crashed agent's claim expires on schedule with no
   cleanup process.
 - **Attribution.** `flock` cannot tell you who holds the lock, what they are
@@ -108,11 +108,11 @@ project would rather you did that than adopt something you do not need.
   knows *why* it is blocked can pick different work.
 - **Handoff.** There is no way to pass a `flock` to another participant.
 - **Portability.** `flock` is not on macOS by default and is not a native
-  concept on Windows. FridgeBoard's mutex is built on `mkdir`, which is atomic
+  concept on Windows. Agent Fridge's mutex is built on `mkdir`, which is atomic
   everywhere.
 - **History.** No record survives the lock being released.
 
-The relationship is not competitive. FridgeBoard uses the same idea internally:
+The relationship is not competitive. Agent Fridge uses the same idea internally:
 its registry mutex is a `mkdir`-based lock held for milliseconds. Claims are the
 layer above.
 
@@ -124,14 +124,14 @@ layer above.
 
 **When to prefer it:** whenever the work is genuinely independent and you are
 willing to pay for merges. Branches are the correct tool for *parallel lines of
-development*, and they are much better than FridgeBoard at:
+development*, and they are much better than Agent Fridge at:
 
 - Reviewing an agent's work as a unit before it touches the mainline.
 - Throwing an agent's work away cleanly.
 - Bisecting, reverting, cherry-picking.
 - Sharing work across machines and with people who are not in the room.
 
-**What it does not solve:** branches do not solve the same problem. FridgeBoard
+**What it does not solve:** branches do not solve the same problem. Agent Fridge
 is for agents that are in **one working tree at the same time**. If you can put
 each agent on its own branch, you almost certainly should, and then you may not
 need this tool at all.
@@ -146,7 +146,7 @@ The friction is real, though, and worth naming:
   or a rename that touches every file is one change; four agents on four
   branches all touching every file is worse than one agent doing it.
 
-Branches and FridgeBoard also compose: the branch name is recorded as a label on
+Branches and Agent Fridge also compose: the branch name is recorded as a label on
 every claim, so a board can show that three agents on the same checkout are all
 working against `feature/api-v2`.
 
@@ -163,10 +163,10 @@ git worktree add ../repo-copilot  feature/ui
 ```
 
 **When to prefer it: this is often the right answer, and you should consider it
-before FridgeBoard.**
+before Agent Fridge.**
 
 If your agents can work in separate checkouts, worktrees give you something
-FridgeBoard cannot: **actual isolation**. Not advisory coordination, not a
+Agent Fridge cannot: **actual isolation**. Not advisory coordination, not a
 cooperative protocol, not a hook that an agent could bypass. Two agents in two
 worktrees physically cannot overwrite each other's files, because they are not
 the same files. There is no trust boundary to reason about and no rule for an
@@ -203,9 +203,9 @@ Prefer worktrees when:
   and you find out at merge time.
 
 The honest summary: **worktrees are strictly better isolation when they fit.**
-FridgeBoard is for the case where they do not fit, or where they fit badly
+Agent Fridge is for the case where they do not fit, or where they fit badly
 enough that everybody ends up back in one checkout anyway. The two are also
-compatible: run FridgeBoard inside a worktree that several agents share.
+compatible: run Agent Fridge inside a worktree that several agents share.
 
 ---
 
@@ -232,7 +232,7 @@ stack, for example a single application managing its own data files.
   spawns a fresh process per command holds nothing between commands, so the
   protection is gone exactly when you need it.
 
-This is why FridgeBoard is deliberately advisory. See
+This is why Agent Fridge is deliberately advisory. See
 [./concepts.md](./concepts.md) and
 [../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#12-security-and-trust-boundaries).
 
@@ -244,7 +244,7 @@ This is why FridgeBoard is deliberately advisory. See
 assigns work to workers.
 
 **When to prefer it:** for deciding **what** should be done and **who** should
-do it. A tracker is better than FridgeBoard at everything to do with planning,
+do it. A tracker is better than Agent Fridge at everything to do with planning,
 prioritising, assigning, discussing, and reporting. If your problem is "the
 agents keep doing the wrong work", a queue is the fix and this tool is not.
 
@@ -254,7 +254,7 @@ can both need `src/api/middleware.ts`. The tracker will happily assign them in
 parallel, and neither assignee learns about the other until one of them
 overwrites the other's edits.
 
-FridgeBoard deliberately does no assignment or scheduling; that is an explicit
+Agent Fridge deliberately does no assignment or scheduling; that is an explicit
 non-goal
 ([../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#13-non-goals-for-v01)).
 The two layers compose well: the tracker says what to work on, the claim says
@@ -290,7 +290,7 @@ is the more ergonomic integration.
   to a checkout has the same on-disk problems this protocol solves. It does not
   remove them; it wraps them.
 
-FridgeBoard has no MCP server and does not require one. Because the protocol is
+Agent Fridge has no MCP server and does not require one. Because the protocol is
 a documented on-disk format
 ([../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#10-interoperability-profile)),
 an MCP server over the same `.fridge/` directory is a perfectly reasonable thing
@@ -318,10 +318,10 @@ A daemon does all of that better than files do.
   and in sandboxes that are torn down constantly. "Is the daemon up?" is a
   question you now have to answer everywhere.
 - **State outlives it badly.** A daemon that dies holding in-memory state loses
-  it. FridgeBoard's state is files; if the CLI is killed mid-command the
+  it. Agent Fridge's state is files; if the CLI is killed mid-command the
   workspace is still readable, and `fridge doctor` will tell you what it found.
 - **It cannot be inspected with `cat`.** Debugging a daemon needs a client.
-  Debugging FridgeBoard needs `ls .fridge/claims/`.
+  Debugging Agent Fridge needs `ls .fridge/claims/`.
 
 No daemon is an explicit non-goal
 ([../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#13-non-goals-for-v01)).
@@ -344,11 +344,11 @@ of being woken. Those are acceptable prices for having nothing to keep alive.
 | Task queue / tracker | none | n/a | task-level | assignment | usually a service | low |
 | MCP coordination server | advisory | server's choice | full | yes | **yes** | per-client config |
 | Daemon | advisory | precise | full | yes | **yes** | supervision |
-| FridgeBoard | advisory | lease + TTL | full | yes | no | one command per task |
+| Agent Fridge | advisory | lease + TTL | full | yes | no | one command per task |
 
 ---
 
-## You probably do not need FridgeBoard if...
+## You probably do not need Agent Fridge if...
 
 - You run **one agent at a time**. This is the most common case and it needs
   nothing.
@@ -387,7 +387,7 @@ Shared coordination boards are old and well understood:
 - **Tuple spaces** (Linda, 1985): coordination through a shared space.
 - **Chore charts on fridge doors**: older than all of it.
 
-FridgeBoard invents none of that. Nothing on this page should be read as a claim
+Agent Fridge invents none of that. Nothing on this page should be read as a claim
 of novelty, and there is no reason it needs to be novel: the pattern is correct,
 and the value is in doing it well for one specific context.
 

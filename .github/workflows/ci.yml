@@ -53,6 +53,99 @@ jobs:
       - name: CLI smoke test
         run: node bin/fridge.mjs version --json
 
+  go:
+    name: go / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: false
+
+      - name: No module dependencies
+        shell: bash
+        run: |
+          if grep -q '^require' go.mod; then
+            echo "go.mod grew a require block; the standard library is the whole dependency tree"
+            exit 1
+          fi
+          echo "zero module dependencies confirmed"
+
+      - name: gofmt
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l cmd internal vectors)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change these files:"
+            echo "$unformatted"
+            exit 1
+          fi
+          echo "gofmt clean"
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: go test
+        run: go test ./...
+
+      - name: Build the binary
+        run: go build -o fridge-ci ./cmd/fridge
+
+      - name: Conformance vectors, embedded in the binary
+        shell: bash
+        run: ./fridge-ci conform
+
+      - name: CLI smoke test
+        shell: bash
+        run: ./fridge-ci version --json
+
+  parity:
+    name: go and node agree
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Both implementations pass the same vectors
+        run: |
+          go run ./cmd/fridge conform
+          node bin/fridge.mjs conform
+
+      - name: Replay every command through both implementations
+        run: npm run parity
+
+  crosscompile:
+    name: six targets build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: false
+
+      - name: Cross-compile every published target
+        run: node tools/go.mjs dist
+
+      - name: Show what would ship
+        run: ls -la dist/
+
+
   powershell:
     name: windows / powershell
     runs-on: windows-latest
@@ -75,6 +168,41 @@ jobs:
 
       - name: Full test suite
         run: npm run test:all
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: false
+
+      - name: Native binary on Windows
+        run: |
+          $ErrorActionPreference = 'Stop'
+          go build -o fridge.exe ./cmd/fridge
+          .\fridge.exe version
+          .\fridge.exe conform
+          if ($LASTEXITCODE -ne 0) { throw "conform failed with $LASTEXITCODE" }
+
+      - name: Native binary exit-code contract, in PowerShell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path ci-ps-native | Out-Null
+          Set-Location ci-ps-native
+          git init -q .
+          $fridge = Join-Path $env:GITHUB_WORKSPACE 'fridge.exe'
+
+          & $fridge init
+          & $fridge join --agent alice --vendor human
+          & $fridge claim "src/**" --task "native powershell check" --ttl 10m --agent alice
+          if ($LASTEXITCODE -ne 0) { throw "claim should have succeeded, got $LASTEXITCODE" }
+
+          & $fridge join --agent bob --vendor human
+          & $fridge claim "src/api/routes.ts" --task "conflict" --agent bob
+          if ($LASTEXITCODE -ne 10) { throw "expected exit 10 (E_CONFLICT), got $LASTEXITCODE" }
+
+          & $fridge doctor --check
+          if ($LASTEXITCODE -ne 0) { throw "doctor --check reported problems: $LASTEXITCODE" }
+          Set-Location ..
+          Write-Host 'native powershell exit-code contract holds'
 
       - name: Quick start, in PowerShell, with PowerShell quoting
         run: |

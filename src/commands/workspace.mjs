@@ -90,8 +90,8 @@ export async function whoami(ctx) {
 
 export async function version(ctx) {
   const data = {
-    product: 'FridgeBoard', package: PACKAGE, version: VERSION, protocol: PROTOCOL,
-    node: process.version, platform: process.platform, arch: process.arch,
+    product: 'Agent Fridge', package: PACKAGE, version: VERSION, protocol: PROTOCOL,
+    implementation: 'node', runtime: process.version, platform: process.platform, arch: process.arch,
   };
   return emit(ctx, 'version', { data, text: `${PACKAGE} ${VERSION}  protocol ${PROTOCOL}  node ${process.version}  ${process.platform}/${process.arch}` });
 }

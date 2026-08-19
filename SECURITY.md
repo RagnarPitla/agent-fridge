@@ -5,7 +5,7 @@
 Please **do not open a public issue** for a security problem.
 
 Report it privately through GitHub's advisory form:
-<https://github.com/RagnarPitla/fridgeboard/security/advisories/new>
+<https://github.com/RagnarPitla/agent-fridge/security/advisories/new>
 
 If that is not available to you, open a normal issue titled "security contact
 request" with no details, and a maintainer will arrange a private channel.
@@ -27,10 +27,10 @@ Supported versions: the latest `0.x` release only, until `1.0`.
 
 ## The trust boundary, stated plainly
 
-Read this before deciding whether something is a vulnerability. FridgeBoard's
+Read this before deciding whether something is a vulnerability. Agent Fridge's
 threat model is narrow, and being clear about it saves everyone time.
 
-**FridgeBoard trusts every process that can write to `.fridge/`.**
+**Agent Fridge trusts every process that can write to `.fridge/`.**
 
 Anyone who can write to `.fridge/` can:
 
@@ -41,7 +41,7 @@ Anyone who can write to `.fridge/` can:
 
 That is not a bug. It is the same trust boundary as the working tree itself. If a
 hostile process can write to your repository, it can also write to your source
-code, your `.git/hooks/`, and your `package.json` install scripts. FridgeBoard is
+code, your `.git/hooks/`, and your `package.json` install scripts. Agent Fridge is
 not, and cannot be, a defence against that. It is a **coordination** tool for
 participants who want to cooperate, in the way a lock on a bathroom door
 coordinates a household without being a security control.
@@ -69,13 +69,13 @@ These are **out of scope**, and will be closed as "working as designed" with a
 pointer back to this file:
 
 - A local process that can write to `.fridge/` tampering with records.
-- An agent choosing to ignore a claim and editing anyway. FridgeBoard is advisory
+- An agent choosing to ignore a claim and editing anyway. Agent Fridge is advisory
   by design. See the FAQ.
 - `--force` doing what `--force` says it does.
 - A user hand-editing `.fridge/` and getting a corrupt workspace. `doctor` will
   quarantine it; that is the designed response.
 - Anything requiring physical access, root, or an already-compromised account.
-- Anything about a *network* attack. There is no network. FridgeBoard opens no
+- Anything about a *network* attack. There is no network. Agent Fridge opens no
   sockets, makes no requests, and has no telemetry.
 
 ---
@@ -88,11 +88,11 @@ report.
 1. **Zero runtime dependencies.** `dependencies` in `package.json` is empty.
    Nothing is fetched at runtime. The entire supply chain is Node itself.
 2. **No network.** No `http`, `https`, `net`, `dns`, or `fetch` in `src/`. You can
-   grep for it. FridgeBoard works fully offline and on an air-gapped machine.
+   grep for it. Agent Fridge works fully offline and on an air-gapped machine.
 3. **No telemetry.** Nothing is collected, counted, or sent. Ever.
 4. **No shell.** `fridge run` spawns your command directly with `spawn(cmd, args)`
    and `shell: false`. Your arguments are never concatenated into a shell string.
-5. **No mutating Git commands.** FridgeBoard may *read* Git state. It never runs
+5. **No mutating Git commands.** Agent Fridge may *read* Git state. It never runs
    `git add`, `git commit`, `git checkout`, `git stash`, or anything else that
    changes your repository or your index.
 6. **Writes stay inside the workspace root**, with two documented exceptions that
@@ -110,7 +110,7 @@ report.
 
 - `.fridge/` inherits your repository's permissions. If your checkout is
   world-writable, so is the board. Do not put a shared checkout in a
-  world-writable directory and then rely on FridgeBoard for isolation.
+  world-writable directory and then rely on Agent Fridge for isolation.
 - Notes are **not encrypted and not private**. Treat `fridge pin` like a comment in
   the code: it will be read, and if `.fridge/` is committed, it will be pushed.
   Never pin a credential, a token, or a customer name.

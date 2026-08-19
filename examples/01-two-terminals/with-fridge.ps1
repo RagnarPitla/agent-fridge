@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# The same processes, the same load, through FridgeBoard. In PowerShell.
+# The same processes, the same load, through Agent Fridge. In PowerShell.
 #
 #   .\with-fridge.ps1
 #

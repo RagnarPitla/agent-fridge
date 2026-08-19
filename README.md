@@ -1,12 +1,18 @@
-# FridgeBoard
+# Agent Fridge
 
-**A fridge door for your repo.** Several AI coding agents and humans work in the
-same Git checkout without overwriting or interrupting each other.
+**One shared fridge door for every coding agent in your checkout.** Several AI
+coding agents and humans work in the same Git repository without overwriting or
+interrupting each other.
 
-Local-first. Zero runtime dependencies. Works with any agent that can run a
-command. No daemon, no cloud service, no database, no mandatory MCP server.
+**Sharded authority, derived overview.** Every authoritative write goes to a
+record only one session owns, or is contested at exactly one named resource.
+There is no global mutable ledger, so there is nothing for two agents to
+overwrite. The readable board is generated from those records, never edited.
 
-[![CI](https://github.com/RagnarPitla/fridgeboard/actions/workflows/ci.yml/badge.svg)](https://github.com/RagnarPitla/fridgeboard/actions/workflows/ci.yml)
+Local-first. Single native binary, no runtime. Works with any agent that can run
+a command. No daemon, no cloud service, no database, no mandatory MCP server.
+
+[![CI](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml/badge.svg)](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20.11-green.svg)](package.json)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](package.json)
@@ -35,9 +41,9 @@ Now replace the roommates with Claude Code in one terminal, GitHub Copilot CLI
 in a second, Codex in a third, and you in a fourth. Same kitchen (one Git
 checkout), same problem, and none of the unwritten rules are enforced.
 
-FridgeBoard is that fridge door, made explicit and machine-checkable:
+Agent Fridge is that fridge door, made explicit and machine-checkable:
 
-| Kitchen | FridgeBoard | The command |
+| Kitchen | Agent Fridge | The command |
 | --- | --- | --- |
 | The door | `.fridge/DOOR.md` (generated, human-readable) | `fridge board` |
 | Putting your name on the door | a session | `fridge join --agent claude` |
@@ -69,7 +75,7 @@ safe with concurrent writers, and no amount of "please be careful" in an
 instruction file fixes it.
 
 Here is the same failure, reproduced on demand by this repository, and the same
-workload run through FridgeBoard:
+workload run through Agent Fridge:
 
 ```
 $ npm run demo
@@ -94,40 +100,79 @@ that is enforced by
 
 ## Install
 
-Pick one. Node.js 20.11 or newer is the only requirement.
+`fridge` is a single self-contained binary. No runtime, no interpreter, no
+dependencies, no post-install script, nothing added to your project.
+
+### Download the binary (recommended)
+
+macOS and Linux:
 
 ```bash
-# straight from GitHub, no clone, nothing to build
-npm install -g github:RagnarPitla/fridgeboard
-
-# or pin the release
-npm install -g github:RagnarPitla/fridgeboard#v0.1.0
-
-# or clone and link, if you want to read the source first (it is 3k lines)
-git clone https://github.com/RagnarPitla/fridgeboard.git
-cd fridgeboard && npm link
+curl -fsSL https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.sh | sh
 ```
 
-No npm account, no registry, no build step. Once the package is on npm, the
-usual `npx fridgeboard init` and `npm install -g fridgeboard` will work too.
+Windows PowerShell:
 
-Not a Node person? You do not have to be. Node is a runtime for the CLI, the
-same way Git is a runtime for `git`. There is nothing to configure and nothing
-is added to your project.
+```powershell
+irm https://github.com/RagnarPitla/agent-fridge/releases/latest/download/install.ps1 | iex
+```
 
-No compiler, no post-install script, no native module, no lockfile churn:
-**FridgeBoard has zero runtime dependencies.** `npm ls -g fridgeboard --all`
-shows one line, and that line is FridgeBoard.
+Or grab the file yourself from the
+[releases page](https://github.com/RagnarPitla/agent-fridge/releases) and put it
+on your `PATH`. Six builds are published for every release:
 
-Verify:
+| Platform | Asset |
+| --- | --- |
+| macOS, Apple silicon | `fridge_darwin_arm64` |
+| macOS, Intel | `fridge_darwin_amd64` |
+| Linux, x86_64 | `fridge_linux_amd64` |
+| Linux, ARM64 | `fridge_linux_arm64` |
+| Windows, x86_64 | `fridge_windows_amd64.exe` |
+| Windows, ARM64 | `fridge_windows_arm64.exe` |
+
+Every asset has a matching `.sha256`, and `checksums.txt` covers the set.
+
+### Have a Go toolchain?
+
+```bash
+go install github.com/RagnarPitla/agent-fridge/cmd/fridge@latest
+```
+
+Go 1.21 or newer. The module has no `require` block: the standard library is
+the entire dependency tree.
+
+### Prefer Node?
+
+There is a second, complete implementation in JavaScript. It passes the same
+conformance vectors and is diffed against the Go binary command by command.
+
+```bash
+npm install -g github:RagnarPitla/agent-fridge
+```
+
+Node.js 20.11 or newer, zero runtime dependencies. Use it if you already live in
+npm, if you want to read the source in a language you know, or if you are
+vendoring the tool into a JavaScript monorepo. See
+[two implementations](#two-implementations-one-conformance-suite) for why both exist.
+
+### Verify
 
 ```bash
 fridge version
-# fridgeboard 0.1.0 (protocol wcp/0.1)
+# agent-fridge 0.2.0 (protocol wcp/0.1)
+
+fridge conform
+# Result: CONFORMANT. 62 case(s) passed.
 ```
 
-If `fridge` is not found, your npm global bin is not on `PATH`. `npm bin -g`
-prints the directory to add.
+`fridge conform` runs the protocol's conformance vectors against the binary you
+just installed, offline, from vectors embedded in the binary itself. If it does
+not say CONFORMANT, do not trust the binary. That check is available to you for
+the same reason it is available to us: the specification is meant to be
+verifiable by strangers.
+
+If `fridge` is not found after installing, the install directory is not on your
+`PATH`. The installer prints the directory it used.
 
 ---
 
@@ -200,7 +245,7 @@ fridge run --claim "src/api/**" --task "run the codemod" -- npm run codemod
 
 ## Where it works
 
-FridgeBoard talks to your agent the way a fridge door talks to a roommate: it
+Agent Fridge talks to your agent the way a fridge door talks to a roommate: it
 does not. **The agent runs a command and reads the exit code.** That is the
 entire integration surface, which is why the compatibility table is boring.
 
@@ -211,7 +256,7 @@ entire integration surface, which is why the compatibility table is boring.
 | Claude Code | `CLAUDE.md` block + CLI; optional `PreToolUse` hook | No |
 | GitHub Copilot CLI | `.github/copilot-instructions.md` block + CLI | No |
 | OpenAI Codex / Codex CLI | `AGENTS.md` block + CLI | No |
-| Cursor | `.cursor/rules/fridgeboard.mdc` block + CLI | No |
+| Cursor | `.cursor/rules/agent-fridge.mdc` block + CLI | No |
 | Windsurf, Cline, Aider, Continue | generic `AGENTS.md` block + CLI | No |
 | Any agent with shell access | `fridge claim` / `fridge check` | No |
 | A human being | `fridge board`, or just read `.fridge/DOOR.md` | No |
@@ -237,17 +282,16 @@ repository instructions and run commands, you have everything you need. See
 | Two machines sharing one checkout over NFS/SMB | Degraded, and it tells you | Cross-host liveness cannot be verified; `E_FOREIGN_HOST` unless you pass `--allow-multihost` |
 | A repo inside Dropbox, OneDrive, or iCloud Drive | Degraded, and it tells you | `fridge doctor` warns; file sync can delay or duplicate writes |
 
-FridgeBoard never emits ANSI colour or non-ASCII characters in v0.1. That is not
+Agent Fridge never emits ANSI colour or non-ASCII characters in v0.1. That is not
 an oversight, it is the reason the PowerShell and CI logs stay readable.
 `--no-color` is accepted and documented as a no-op.
 
 ---
 
-## This is not a new idea
+## This is not a new idea, and the differentiator is not the idea
 
-It should not be sold as one.
-
-Shared coordination boards are old and well understood:
+Shared coordination boards are old and well understood. Agent Fridge invents
+none of this, claims no first, and should not be sold as novel:
 
 - **Blackboard architectures** (HEARSAY-II, 1980) had independent knowledge
   sources posting to a shared structure.
@@ -258,22 +302,76 @@ Shared coordination boards are old and well understood:
 - **Tuple spaces** (Linda, 1985) solved coordination through a shared space.
 - **Chore charts on fridge doors** predate all of it.
 
-FridgeBoard invents none of that. What it claims is narrower and checkable:
+The differentiator is the **data-ownership shape**, and it is checkable rather
+than rhetorical.
 
-> The best-engineered open, model-neutral, dependency-free implementation of
-> this pattern for multi-agent coding workspaces, one that works the same on
-> Claude Code, Copilot CLI, Codex, tmux, Herdr, a plain terminal, and
-> PowerShell.
+### Sharded authority, derived overview
+
+Two rules, and everything else follows from them.
+
+**1. Every authoritative mutation is single-writer.** It goes to a record that
+exactly one session owns, or it is contested at exactly one named resource.
+
+| Kind of write | Who may write it | What it looks like on disk |
+| --- | --- | --- |
+| A note | Its author, once, then never again | `notes/2026/02/14/<ts>--0007--alice--evt_...json` |
+| A claim | The session that holds it | `claims/clm_....json` |
+| A lease | The session that owns the claim | `leases/clm_....json` |
+| A session | The actor whose session it is | `sessions/ses_....json` |
+| An inbox item | The sender writes, the recipient consumes | `inbox/<toSlug>/<id>.json` |
+| The one contested decision | Serialised at exactly one resource | `locks/registry.lock.d/`, an atomic `mkdir` |
+
+There is no file that two writers append to. There is no counter to increment,
+no array to splice, no list to re-serialise. Two agents pinning a note in the
+same millisecond write two different filenames and both survive, because the
+sequence number and the author slug are in the name.
+
+**2. Every shared view is derived.** `.fridge/DOOR.md` is generated from the
+records and carries a `DO NOT EDIT` banner and a state hash. Delete it and
+`fridge render` rebuilds it byte for byte. Nothing reads it. It is a projection,
+not a source.
+
+That is why there is **no `FRIDGE.md`** and no authoritative Markdown anywhere in
+this design. A Markdown file that agents both read and write is precisely the
+failure this project exists to remove, and re-introducing one at the top level
+would undo the whole thing. There is a test that asserts no `.md` file is ever
+read as state.
+
+### How that differs from the closest tools
+
+This is the honest comparison, and it is a design-shape difference, not a
+quality judgement:
+
+| Shape | Typical implementation | What happens under contention |
+| --- | --- | --- |
+| **Central mutable ledger** | One `state.json` rewritten in full, one `events.jsonl` appended by everyone, one SQLite file, or one global lock around all work | Last writer wins on the JSON; interleaved partial lines on the JSONL; writer serialisation and `SQLITE_BUSY` on the database; convoyed agents behind the global lock |
+| **Sharded authority** (here) | One file per note, per claim, per lease, per session; contention only at one lock directory, and only for the moment a claim is decided | Concurrent writers touch different files, so they cannot collide. The only serialised operation is the decision itself, which takes milliseconds |
+
+Central-ledger designs are perfectly reasonable and often simpler. They are also
+the designs that produce the failure at the top of this README. If your tool
+keeps agent state in a shared JSON, JSONL, or SQLite file, that is the property
+worth comparing, not the feature list.
+
+### What is actually claimed
+
+> An open, model-neutral, dependency-free implementation of a well-known pattern,
+> with the authority sharded so concurrent writers cannot overwrite each other,
+> a written protocol, a conformance suite, and two independent implementations
+> that pass it. It works the same on Claude Code, Copilot CLI, Codex, tmux,
+> Herdr, a plain terminal, and PowerShell.
 
 Concretely, that means:
 
 | Claim | How you can check it |
 | --- | --- |
-| Zero runtime dependencies | `npm ls --all` |
+| Sharded authority, no global ledger | `ls -R .fridge/` and look for a file two sessions both write. There is not one |
+| Derived overview, never authoritative | Delete `.fridge/DOOR.md`, run `fridge render`, diff it. Nothing reads it |
+| Zero runtime dependencies | `go.mod` has no `require` block; `npm ls --all` shows one line |
+| The spec is sufficient, not decorative | Two independent implementations, Go and Node, pass the same `vectors/*.json` and are diffed command by command by `npm run parity` |
 | Real concurrency, not simulated | `npm run test:concurrency` spawns genuine OS processes that race at an agreed instant |
 | The failure mode is actually fixed | `npm run demo` reproduces the data loss, then removes it |
 | Exit codes are a stable API | [spec/exit-codes.md](spec/exit-codes.md), generated from the source, verified by `npm run gen:check` |
-| The protocol is forkable | [spec/protocol-v0.1.md](spec/protocol-v0.1.md) is a complete specification: you can reimplement it in Go, Rust, or Python without reading our source |
+| The protocol is forkable | [spec/protocol-v0.1.md](spec/protocol-v0.1.md) is a complete specification. We proved it by writing the Go implementation from it and fixing the 8 places where the prose had drifted |
 | No vendor lock-in | Nothing in `.fridge/` names a model vendor except a free-text `vendor` label |
 | Model-neutral | There is no model, no API key, no network call, anywhere in the codebase |
 
@@ -287,21 +385,40 @@ where the alternatives are genuinely better.
 
 A coordination tool can be delivered as a protocol, a CLI, a skill, an agent, a
 harness, or a plugin. We evaluated all of them
-([ADR-0001](docs/adr/0001-distributable-form.md)) and ship a **layered stack**,
-because each layer fails differently:
+([ADR-0001](docs/adr/0001-distributable-form.md)) and ship a **CLI-led layered
+package**: one thing you install, four things in the box.
 
-| Layer | What it is | Why | Required? |
+| Layer | What it is | Why it is at this layer | Required? |
 | --- | --- | --- | --- |
-| 0 | **Protocol** (`spec/protocol-v0.1.md`) | On-disk format and semantics. Makes the project forkable and outlives this implementation. | Yes, it is the contract |
-| 1 | **CLI** (`fridge`) | The reference implementation and the primary distributable. Exit codes are the API. Anything that can spawn a process can participate. | Yes, this is what you install |
-| 2 | **Instruction adapters** (`fridge adapters install`) | Generated blocks in `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, and friends. One canonical text, spliced into vendor files, drift-detected. | Recommended |
-| 3 | **Skill / plugin packaging** | The same rules as a Claude skill or a Copilot CLI skill, for people who prefer that distribution channel. | Optional |
-| 4 | **Hooks and harness glue** | `PreToolUse` hooks, pre-commit hooks, tmux and Herdr helpers, for enforcement rather than cooperation. | Optional |
+| 0 | **Versioned protocol** (`spec/protocol-v0.1.md`, protocol `wcp/0.1`) | The contract. Versioned independently of the CLI, so a second implementation can target it and a workspace can say which version wrote it. Forkable, and it outlives this repository. | Yes, it is the contract |
+| 1 | **Single native CLI** (`fridge`) | One static binary per platform, no runtime to install. Exit codes are the API. Anything that can spawn a process can participate, which is the only capability every agent, shell, and human shares. | Yes, this is what you install |
+| 2 | **Bundled open Agent Skill** ([`skill/SKILL.md`](skill/SKILL.md)) | Vendor-neutral, in the box, Apache-2.0, no vendor's format required. `fridge adapters install` splices the same canonical rules into `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, and Codex, so instructions cannot drift apart. | Recommended, and it ships with the binary |
+| 3 | **Conformance and race harness** (`fridge conform`, `vectors/*.json`, `fridge simulate`) | The thing that makes layer 0 real. A language-neutral vector suite plus a real multi-process race harness, so any implementation in any language can prove it conforms without reading our source. | Yes, it ships in the package |
+| 4 | **Optional adapters**: MCP server, `PreToolUse` hooks, pre-commit, tmux, Herdr | Better discovery or genuine enforcement where a vendor supports it. Every one of them is a thin shell over layer 1 and adds no semantics of its own. | Optional, always |
 
-Deliberately **not** an agent. An agent that coordinates agents needs a model,
-an API key, a network call, and a budget, and it can hallucinate. A fridge door
-cannot hallucinate. Layer 1 is a 30-millisecond process that either exits `0` or
-does not.
+The load-bearing choice is that **layers 2, 3, and 4 may never contain behaviour
+that is not already in layer 0.** A skill that knows something the protocol does
+not is a second protocol, and two protocols is the problem we started with.
+
+Deliberately **not** an agent. An agent that coordinates agents needs a model, an
+API key, a network call, and a budget, and it can hallucinate. A fridge door
+cannot hallucinate. Layer 1 is a process that either exits `0` or does not.
+
+### Two implementations, one conformance suite
+
+| Implementation | Where | Status | Install |
+| --- | --- | --- | --- |
+| **Go** | `cmd/fridge`, `internal/` | Primary. Single static binary, no runtime, 6 platforms | Download a binary, or `go install` |
+| **Node** | `bin/`, `src/` | Second implementation, kept green | `npm install -g github:RagnarPitla/agent-fridge` |
+
+Both pass the same `vectors/*.json`. `npm run parity` replays 74 commands
+through both binaries in two fresh workspaces and diffs exit codes and JSON
+envelopes with only genuinely volatile facts masked. Current result: **74
+commands compared, 0 mismatches.**
+
+That is not a stunt. It is the only real evidence that the protocol document is
+sufficient, and writing the second implementation from the spec is what exposed
+the eight places where the prose had drifted from the code.
 
 ---
 
@@ -376,6 +493,7 @@ decline    Refuse an offered chore.
 inbox      Notes addressed to me.
 doctor     Tidy the door: diagnose and repair.
 simulate   Run a real multi-process household simulation.
+conform    Check this build against the protocol vectors.
 adapters   Install or check vendor instruction blocks.
 migrate    Import legacy shared Markdown files into the notes wall.
 config     Read or write .fridge/config.json.
@@ -403,6 +521,7 @@ Exit codes are the contract. The full table is
 | `14` | `E_OUT_OF_SCOPE` | You are writing outside your claim |
 | `21` | `E_WAIT_TIMEOUT` | You waited long enough |
 | `30` | `E_DRIFT` | A `--check` found something out of date |
+| `31` | `E_NONCONFORMANT` | This build disagrees with the protocol vectors |
 
 ---
 
@@ -454,7 +573,7 @@ Rules:
 3. Claim the narrowest paths that cover your work, and release when you stop.
 4. Report progress with `fridge pin`, not by editing a shared Markdown file.
 
-Full protocol: `.fridge/` and https://github.com/RagnarPitla/fridgeboard (protocol wcp/0.1).
+Full protocol: `.fridge/` and https://github.com/RagnarPitla/agent-fridge (protocol wcp/0.1).
 <!-- END WCP-ADAPTER v0.1 -->
 ````
 
@@ -483,14 +602,30 @@ to see the parse before anything is written. See [docs/migration.md](docs/migrat
 
 ## Proving it works
 
+Nothing here is a claim you have to take on faith. Every line is a command you
+can run.
+
 ```bash
-npm test                 # unit + integration
-npm run test:concurrency # real processes racing on the real filesystem
-npm run test:all         # everything
-npm run demo             # the 60-second before/after
-npm run lint             # ASCII-only, parses, SPDX headers
-fridge simulate --agents 6 --duration 60s # a full simulated household
+fridge conform            # this binary agrees with the protocol vectors
+go test ./...             # the Go implementation, 109 tests
+npm run test:all          # the Node implementation, 91 tests, including real concurrency
+npm run parity            # Go and Node give identical answers, command by command
+npm run demo              # the 60-second before/after, old pattern vs this one
+npm run lint              # ASCII-only, parses, SPDX headers, both languages
+fridge simulate --agents 6 --duration 60s   # a full simulated household
 ```
+
+Current results, on this commit:
+
+| Check | Result |
+| --- | --- |
+| `fridge conform`, Go binary | 62 of 62 cases, CONFORMANT |
+| `fridge conform`, Node | 62 of 62 cases, CONFORMANT |
+| `go test ./...` | 109 tests, 0 failures |
+| `npm run test:all` | 91 tests, 0 failures |
+| `npm run parity` | 74 commands compared, 0 mismatches |
+| `node tools/go.mjs dist` | 6 of 6 targets build, about 3 MiB each |
+| `npm run demo` | old pattern loses 191 notes, this one loses 0 |
 
 The concurrency suite is the interesting one. It does not mock the filesystem
 and it does not fake time. It spawns real child processes, holds them at a
@@ -505,6 +640,12 @@ barrier, releases them at one agreed instant, and then asserts invariants:
 - a `SIGKILL`ed agent leaves readable state, and its card expires on schedule
 - a lock left by a dead process is broken, not waited on forever
 - 200 notes written by 8 processes: 200 survive
+
+And the invariant the whole project rests on is itself a test. `no .md file is
+ever read as state` greps both implementations for any read of a Markdown path,
+then deletes and garbles every generated Markdown file in a live workspace and
+asserts that no answer the CLI gives changes. A hostile `FRIDGE.md` planted in
+the repository root cannot assert a claim and cannot block one.
 
 ---
 
@@ -522,6 +663,9 @@ barrier, releases them at one agreed instant, and then asserts invariants:
 | [docs/migration.md](docs/migration.md) | Coming from shared Markdown files |
 | [docs/faq.md](docs/faq.md) | Including "why not just use branches?" |
 | [docs/adr/0001-distributable-form.md](docs/adr/0001-distributable-form.md) | Why this is a protocol plus a CLI, and explicitly not an agent |
+| [docs/adr/0002-native-binary-and-two-implementations.md](docs/adr/0002-native-binary-and-two-implementations.md) | Why Go is the primary implementation, why Node stays, and what the second implementation found |
+| [skill/SKILL.md](skill/SKILL.md) | The bundled, vendor-neutral Agent Skill, and [when to install it](skill/README.md) |
+| [vectors/](vectors/) | The language-neutral conformance vectors, embedded in the binary |
 | [examples/01-two-terminals/](examples/01-two-terminals/) | Runnable before/after scripts, bash and PowerShell |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to change the protocol without breaking it |
 | [GOVERNANCE.md](GOVERNANCE.md) | Who decides what, and how the protocol is versioned |
@@ -539,7 +683,7 @@ generated views, adapters, migration, doctor, a real simulation.
 assignment or scheduling, merge-conflict resolution, a web UI, mandatory hooks,
 telemetry of any kind, and any dependency on a model provider.
 
-FridgeBoard coordinates who is working where. It does not do the work, and it
+Agent Fridge coordinates who is working where. It does not do the work, and it
 does not pretend to be Git.
 
 ---
@@ -551,7 +695,7 @@ Issues and pull requests are welcome. Start with
 needs a test, the exit-code table only ever grows, and everything shipped stays
 ASCII and dependency-free.
 
-Security reports: [SECURITY.md](SECURITY.md). FridgeBoard is a cooperative tool
+Security reports: [SECURITY.md](SECURITY.md). Agent Fridge is a cooperative tool
 with an explicit trust boundary; read
 [the threat model](spec/protocol-v0.1.md#12-security-and-trust-boundaries)
 before filing.

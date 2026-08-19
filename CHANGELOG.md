@@ -7,7 +7,7 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Two version numbers matter and they move independently:
 
-- the **CLI version** (`0.1.0`), which is what npm and the tags track, and
+- the **CLI version** (`0.2.0`), which is what the tags and the release binaries track, and
 - the **protocol version** (`wcp/0.1`), which is what `.fridge/` records declare.
 
 A CLI release that does not change the protocol leaves `wcp/0.1` alone.
@@ -17,6 +17,103 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
 ## [Unreleased]
 
 Nothing yet.
+
+---
+
+## [0.2.0] - 2026-02-21
+
+Renamed, rewritten in Go, and given a way for strangers to verify it. The
+protocol is unchanged: `wcp/0.1` records written by 0.1.0 are read by 0.2.0
+without migration.
+
+### Added
+
+**A native binary as the primary implementation**
+
+- Complete second implementation in Go: `cmd/fridge` and `internal/`, standard
+  library only, no `require` block, one static binary per platform.
+- Six published builds: darwin/linux/windows on amd64/arm64, each with a
+  `.sha256`, plus a `checksums.txt` for the set.
+- `install.sh` and `install.ps1`: one-line install for macOS, Linux and Windows
+  PowerShell, with checksum verification and an explicit warning when a checksum
+  is not published rather than a silent skip.
+- The rationale, the costs, and the rejected alternatives are in
+  [ADR 0002](docs/adr/0002-native-binary-and-two-implementations.md).
+
+**`fridge conform`**
+
+- New command. Runs the protocol's conformance vectors against the binary you
+  are holding and prints a per-suite table. Exits `0` when conformant and `31`
+  (`E_NONCONFORMANT`) when not.
+- The Go binary embeds the vectors, so `fridge conform` works offline with no
+  checkout. `--vectors <dir>` runs an external suite; `--suite <name>` narrows;
+  `--verbose` lists every case rather than only the failures.
+- Vector files may now declare the directory tree they need, via a `fixture`
+  key, so a conformance run is reproducible on a stranger's machine instead of
+  depending on the caller's working directory.
+
+**Verification**
+
+- `npm run parity` replays the command corpus through both implementations in
+  two fresh workspaces and diffs exit codes and JSON envelopes, masking only
+  genuinely volatile facts. Current result: 71 commands compared, 0 mismatches.
+- `test/unit/markdown-is-not-state.test.mjs` enforces the load-bearing
+  invariant three ways: no source file in either language reads a `.md` path;
+  deleting or garbling every generated Markdown file changes no answer the CLI
+  gives; and a hostile `FRIDGE.md` in the repository root cannot assert or block
+  a claim.
+- CI now builds, vets, `gofmt`-checks and tests the Go implementation on macOS,
+  Linux and Windows, runs the parity diff, and verifies all six cross-compile
+  targets.
+
+**Packaging**
+
+- `skill/SKILL.md`: the bundled, vendor-neutral, Apache-2.0 Agent Skill, with
+  `skill/README.md` explaining when to install it versus running
+  `fridge adapters install`.
+
+### Changed
+
+- **Renamed** from FridgeBoard to **Agent Fridge**; the package is
+  `agent-fridge`. The binary is still `fridge`, the state directory is still
+  `.fridge/`, and the protocol is still `wcp/0.1`, so nothing on disk moves.
+  GitHub redirects the old repository URL.
+- The conformance vectors moved from `test/vectors/` to **`vectors/`** at the
+  repository root, which is now a Go package that embeds them. One canonical
+  copy, read by both implementations and embedded in the binary. A project whose
+  premise is one writer per record should not keep two copies of its own
+  contract.
+- `README.md` install section leads with the native binary; the Node package is
+  documented as the second implementation and why it exists.
+- `README.md` positioning rewritten around **sharded authority, derived
+  overview**, with the prior-art section stating plainly that a shared
+  coordination board is not a new idea and that no first-of-its-kind claim is
+  made. The differentiator is the design shape and the portability, and it is
+  stated as a design difference rather than a quality judgement.
+
+### Fixed
+
+- **`simulate --duration 60s` did nothing and reported PASS.** The duration flag
+  was parsed with `Number('60s')`, which is `NaN`, so the harness exited
+  immediately having performed zero operations and still printed a pass. Now
+  parsed with the same duration parser as every other TTL flag. A four-agent,
+  six-second run now performs real work: 31 claims, 15 denials, 61 notes.
+- `simulate` invariant I2 could report a false positive by counting notes
+  written before the run began. Notes are now filtered to the run window.
+- **Eight places where `spec/protocol-v0.1.md` had drifted from the tested
+  behaviour**, all found by implementing the protocol a second time from the
+  prose alone: the claim state name (`held` vs `active`), the registry mutex
+  directory name, claim-token length and alphabet, the actor-slug algorithm, the
+  three overlap reason codes, the mutex backoff curve, note filename
+  zero-padding, and the shape of the `--json` error envelope. In every case the
+  code was correct and the prose moved.
+- `tools/gen-exit-codes.mjs` documented the wrong JSON error shape; the
+  generated `spec/exit-codes.md` is corrected.
+
+### Added, exit codes
+
+- `E_NONCONFORMANT` = **31**. No existing code changed meaning or value, so the
+  0.x exit-code contract holds.
 
 ---
 
@@ -34,7 +131,7 @@ First public release. Protocol `wcp/0.1`.
   resolution, the interop profile, and 12 testable invariants (I1 to I12).
 - `spec/exit-codes.md`: 20 exit codes, generated from `src/core/errors.mjs` and
   checked in CI so the document cannot drift from the implementation.
-- `test/vectors/*.json`: language-neutral conformance vectors for path
+- `vectors/*.json`: language-neutral conformance vectors for path
   normalization, scope overlap, glob matching, and brace expansion, so a second
   implementation can prove conformance without reading any JavaScript.
 
@@ -100,7 +197,7 @@ First public release. Protocol `wcp/0.1`.
 
 - Unit, integration, and real multi-process concurrency test suites.
 - `npm run demo`: eight processes against one shared Markdown file, then the same
-  eight against `fridge pin`. The old way loses notes; FridgeBoard loses none. The
+  eight against `fridge pin`. The old way loses notes; Agent Fridge loses none. The
   demo exits non-zero if a single note goes missing.
 - `npm run lint`: ASCII-only, parses, SPDX header on every shipped file.
 - `npm run gen:check`: exit-code documentation drift check.
@@ -108,7 +205,7 @@ First public release. Protocol `wcp/0.1`.
 
 ### Notes
 
-- FridgeBoard is **cooperative and advisory**. It coordinates participants that
+- Agent Fridge is **cooperative and advisory**. It coordinates participants that
   want to cooperate. It is not a security boundary, and `SECURITY.md` says so
   explicitly rather than implying otherwise.
 - No network, no telemetry, no daemon, no database, no required MCP server, and no
@@ -119,5 +216,6 @@ First public release. Protocol `wcp/0.1`.
   implementation with a written protocol and proof that it holds under real
   concurrency.
 
-[Unreleased]: https://github.com/RagnarPitla/fridgeboard/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/RagnarPitla/fridgeboard/releases/tag/v0.1.0
+[Unreleased]: https://github.com/RagnarPitla/agent-fridge/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/RagnarPitla/agent-fridge/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/RagnarPitla/agent-fridge/releases/tag/v0.1.0

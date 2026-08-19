@@ -1,0 +1,114 @@
+# SPDX-License-Identifier: Apache-2.0
+# Publishes the six binaries, their checksums, and the installers for a tag.
+#
+# Nothing here is trusted blindly: the release only happens after the binary has
+# proved itself against the protocol's own conformance vectors, and after the Go
+# and Node implementations have been diffed command by command.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build, for a dry run
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    name: prove it before publishing it
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Generated docs are in sync
+        run: npm run gen:check
+
+      - name: Go vet and tests
+        run: |
+          go vet ./...
+          go test ./...
+
+      - name: Node tests, including real concurrency
+        run: npm run test:all
+
+      - name: Both implementations conform
+        run: |
+          go run ./cmd/fridge conform
+          node bin/fridge.mjs conform
+
+      - name: Go and Node agree, command by command
+        run: npm run parity
+
+      - name: The demo still proves zero notes lost
+        run: npm run demo
+
+  publish:
+    name: build and publish six binaries
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.21'
+          cache: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Version in the tag matches the version in the code
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          code="v$(node -p "require('./package.json').version")"
+          go_version="v$(go run ./cmd/fridge version --json | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).data.version")"
+          echo "tag=$tag package.json=$code go=$go_version"
+          if [ "$tag" != "$code" ] || [ "$tag" != "$go_version" ]; then
+            echo "Version mismatch. Bump src/brand.mjs, internal/brand, and package.json together."
+            exit 1
+          fi
+
+      - name: Cross-compile every target
+        run: node tools/go.mjs dist
+
+      - name: The artifact that will ship is the one that was verified
+        run: |
+          chmod +x dist/fridge_linux_amd64
+          ./dist/fridge_linux_amd64 version
+          ./dist/fridge_linux_amd64 conform
+          cd dist && sha256sum -c checksums.txt
+
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          gh release create "$tag" \
+            --title "$tag" \
+            --notes-file .github/release-notes.md \
+            dist/fridge_* dist/checksums.txt dist/install.sh dist/install.ps1
+
+      - name: Dry run summary
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          echo "Dry run. These assets would have been published:"
+          ls -la dist/

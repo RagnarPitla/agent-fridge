@@ -16,7 +16,7 @@ export const VENDORS = {
   claude: { file: 'CLAUDE.md', label: 'Claude Code' },
   copilot: { file: path.join('.github', 'copilot-instructions.md'), label: 'GitHub Copilot (IDE and CLI)' },
   codex: { file: path.join('.codex', 'instructions.md'), label: 'OpenAI Codex (explicit file)' },
-  cursor: { file: path.join('.cursor', 'rules', 'fridgeboard.mdc'), label: 'Cursor' },
+  cursor: { file: path.join('.cursor', 'rules', 'agent-fridge.mdc'), label: 'Cursor' },
   generic: { file: path.join('docs', 'AGENT-COORDINATION.md'), label: 'Generic / any other tool' },
 };
 

@@ -35,9 +35,11 @@ Rules:
    fallback and no partial success.
 3. All codes are below \`126\`, so they never collide with the shell's
    "command not found" (127) or "killed by signal" (128+N) range.
-4. \`--json\` prints the same information on stdout as
-   \`{"ok":false,"error":{"code":"E_...","exit":N,...}}\`, so callers that cannot
-   read \`$?\` portably can parse instead.
+4. \`--json\` prints the same information on stdout, in a key-sorted envelope
+   whose shape is exactly:
+   \`{"command":"...","data":null,"error":{"code":"E_...","details":...,"hint":"...","message":"..."},"exitCode":N,"ok":false,"protocol":"wcp/0.1","ts":"..."}\`
+   so callers that cannot read \`$?\` portably can parse \`.exitCode\` instead.
+   On success the envelope has no \`error\` key and \`ok\` is \`true\`.
 
 | Exit | Code | Meaning |
 | ---: | ---- | ------- |

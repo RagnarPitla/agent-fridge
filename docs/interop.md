@@ -1,6 +1,6 @@
 # Interop
 
-Where FridgeBoard runs, how to set up each environment, and where it is honestly degraded.
+Where Agent Fridge runs, how to set up each environment, and where it is honestly degraded.
 
 The integration surface is one process that exits with a number, so most of this
 page is short. The interesting parts are the per-shell identity setup and the
@@ -9,7 +9,7 @@ two degraded cases at the end.
 Two rules carry across every environment on this page:
 
 1. **Each participant needs its own `FRIDGE_ACTOR`,** or must pass `--agent` on
-   every command. FridgeBoard never guesses.
+   every command. Agent Fridge never guesses.
 2. **State is per checkout.** `.fridge/` lives beside `.git/`, so it travels
    with the repository into a container, an SSH session, or a CI runner without
    any extra configuration.
@@ -121,7 +121,7 @@ screen -r fridge
 ### Herdr-style orchestrators
 
 Any orchestrator that spawns one agent per pane, tab, or process works the same
-way, because FridgeBoard's only requirement is that each spawned agent has a
+way, because Agent Fridge's only requirement is that each spawned agent has a
 distinct identity. Two options:
 
 - **Per-process environment.** Set `FRIDGE_ACTOR` in the environment the
@@ -191,7 +191,7 @@ the profile from the terminal dropdown.
 
 ## Windows
 
-FridgeBoard is tested on Windows in CI. The two things that make it behave there
+Agent Fridge is tested on Windows in CI. The two things that make it behave there
 are deliberate: the registry mutex is built on `mkdir`, which is atomic on
 Windows as well as POSIX, and **all output is pure ASCII with no ANSI colour**,
 so a PowerShell 5.1 transcript or a CI log stays readable.
@@ -343,7 +343,7 @@ automatically. Add the identity to `devcontainer.json`:
   "containerEnv": {
     "FRIDGE_ACTOR": "devcontainer"
   },
-  "postCreateCommand": "npm install -g fridgeboard && fridge join --agent devcontainer --vendor other"
+  "postCreateCommand": "npm install -g agent-fridge && fridge join --agent devcontainer --vendor other"
 }
 ```
 
@@ -368,7 +368,7 @@ The useful CI checks are the drift checks. They write nothing and exit `30` when
 something is out of date:
 
 ```yaml
-name: fridgeboard
+name: agent-fridge
 on: [push, pull_request]
 
 jobs:
@@ -379,7 +379,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install -g fridgeboard
+      - run: npm install -g agent-fridge
       - name: Instruction blocks are current
         run: fridge adapters check
       - name: Generated views are current
@@ -399,7 +399,7 @@ to treat exit `30` as a warning rather than a failure:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install -g fridgeboard
+      - run: npm install -g agent-fridge
       - shell: pwsh
         run: |
           fridge adapters check
@@ -427,7 +427,7 @@ touching each call site.
 
 ## Degraded cases, stated plainly
 
-Two environments do not give FridgeBoard the guarantees it needs. Both are
+Two environments do not give Agent Fridge the guarantees it needs. Both are
 detected and reported rather than silently tolerated.
 
 ### Two machines sharing one checkout over NFS or SMB

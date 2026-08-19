@@ -11,7 +11,7 @@ import { normalizePattern, scopesOverlap, expandBraces, patternToRegExp } from '
 import { AppError } from '../../src/core/errors.mjs';
 import { makeRepo, cleanup } from '../helpers.mjs';
 
-const dir = fileURLToPath(new URL('../vectors/', import.meta.url));
+const dir = fileURLToPath(new URL('../../vectors/', import.meta.url));
 const load = (name) => JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8'));
 
 test('vectors: path normalization', () => {

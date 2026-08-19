@@ -1,4 +1,4 @@
-# ADR 0001: What FridgeBoard ships as
+# ADR 0001: What Agent Fridge ships as
 
 - **Status:** Accepted
 - **Date:** 2026-02-14
@@ -155,7 +155,7 @@ distributable, and every vendor-specific form is an optional adapter on top.**
 
 | Layer | Artefact | Status | Why it is at this layer |
 | --- | --- | --- | --- |
-| **0. Protocol** | `spec/protocol-v0.1.md` + `test/vectors/*.json` | Required, normative | The real deliverable. Language-neutral, forkable, outlives this repository and any vendor |
+| **0. Protocol** | `spec/protocol-v0.1.md` + `vectors/*.json` | Required, normative | The real deliverable. Language-neutral, forkable, outlives this repository and any vendor |
 | **1. CLI** | `fridge` (Node, zero dependencies) | Required, primary distributable | The lowest common denominator every participant already has: the ability to run a command and read an exit code |
 | **2. Adapters** | `fridge adapters install` writing into `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, Codex, generic | Recommended | Generated from one canonical text so vendor instructions cannot drift apart |
 | **3. Skill / MCP wrapper** | Optional packaging over the CLI | Optional, later | Better discovery for vendors that support it, with zero new semantics |
@@ -191,7 +191,7 @@ Three reasons, in order of importance:
    and then checking the code against it.
 2. **It makes a second implementation possible.** Someone wanting a single static Go
    binary, or a Rust crate, should be able to build it from the spec and prove
-   conformance against `test/vectors/`, without reading any JavaScript.
+   conformance against `vectors/`, without reading any JavaScript.
 3. **It survives.** If this repository is abandoned, `.fridge/` is still just JSON
    and Markdown, and the document describing it is already on your disk.
 

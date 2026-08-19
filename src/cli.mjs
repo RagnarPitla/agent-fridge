@@ -8,6 +8,7 @@ import * as claims from './commands/claims.mjs';
 import * as notes from './commands/notes.mjs';
 import * as view from './commands/view.mjs';
 import * as coord from './commands/coord.mjs';
+import * as conformance from './commands/conform.mjs';
 
 const GLOBAL_BOOL = ['json', 'quiet', 'verbose', 'no-color', 'yes', 'help', 'allow-multihost'];
 const GLOBAL_VALUE = ['repo', 'agent', 'vendor'];
@@ -36,6 +37,7 @@ export const COMMANDS = {
   inbox: { fn: coord.inbox, summary: 'Notes addressed to me.', bool: [], value: [], exits: [] },
   doctor: { fn: coord.doctor, summary: 'Tidy the door: diagnose and repair.', bool: ['fix', 'check'], value: [], exits: ['E_DRIFT'] },
   simulate: { fn: coord.simulate, summary: 'Run a real multi-process household simulation.', bool: [], value: ['agents', 'duration', 'seed', 'report'], exits: [] },
+  conform: { fn: conformance.conform, summary: 'Check this build against the protocol vectors.', bool: ['verbose'], value: ['vectors', 'suite'], exits: ['E_NONCONFORMANT', 'E_NOT_FOUND'] },
   adapters: { fn: workspace.adapters, summary: 'Install or check vendor instruction blocks.', bool: ['check', 'print'], value: ['vendor'], exits: ['E_DRIFT', 'E_USAGE'] },
   migrate: { fn: workspace.migrate, summary: 'Import legacy shared Markdown files into the notes wall.', bool: ['dry-run', 'freeze'], value: ['todo-done', 'updates', 'author-map'], exits: ['E_USAGE', 'E_NOT_FOUND'] },
   config: { fn: workspace.config, summary: 'Read or write .fridge/config.json.', bool: [], value: [], exits: ['E_USAGE', 'E_NOT_FOUND'] },

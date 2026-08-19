@@ -85,7 +85,7 @@ export function openWorkspace({ repo, cwd = process.cwd(), requireInit = true } 
   }
   if (versionRaw !== PROTOCOL) {
     throw new AppError('E_PROTOCOL_VERSION', `Workspace speaks ${versionRaw}; this binary speaks ${PROTOCOL}.`, {
-      hint: 'Upgrade fridgeboard, or use a matching version.',
+      hint: 'Upgrade agent-fridge, or use a matching version.',
     });
   }
   const loaded = readJsonSafe(paths.config);
@@ -94,7 +94,7 @@ export function openWorkspace({ repo, cwd = process.cwd(), requireInit = true } 
   return { root, paths, initialized: true, config, cwd, version: versionRaw };
 }
 
-export const GITIGNORE = `# Managed by FridgeBoard (${PROTOCOL}).
+export const GITIGNORE = `# Managed by Agent Fridge (${PROTOCOL}).
 # Live coordination state is machine-local. The notes wall is shared history.
 /*
 !/.gitignore
@@ -136,7 +136,7 @@ export function ensureGitAttributes(root) {
   const missing = lines.filter((l) => !current.includes(l.split(' ')[0]));
   if (!missing.length) return false;
   const next = (current && !current.endsWith('\n') ? current + '\n' : current)
-    + (current ? '\n' : '') + '# FridgeBoard\n' + missing.join('\n') + '\n';
+    + (current ? '\n' : '') + '# Agent Fridge\n' + missing.join('\n') + '\n';
   fs.writeFileSync(file, next);
   return true;
 }

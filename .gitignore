@@ -4,3 +4,7 @@ node_modules/
 *.tgz
 .DS_Store
 examples/**/.demo-*
+.toolchain/
+
+# Cross-compiled release artifacts, built by: npm run go:dist
+dist/

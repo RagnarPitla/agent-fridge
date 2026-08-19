@@ -8,7 +8,7 @@ Fixes #
 
 <!-- Tick every one that applies. See docs/adr/0001-distributable-form.md. -->
 
-- [ ] Protocol (`spec/`, `test/vectors/`) - **this is a contract change**
+- [ ] Protocol (`spec/`, `vectors/`) - **this is a contract change**
 - [ ] Reference implementation (`src/`, `bin/`)
 - [ ] Adapters (vendor instruction blocks)
 - [ ] Tests
@@ -21,7 +21,7 @@ Fixes #
      spec, source, and tests move together. See CONTRIBUTING.md. -->
 
 - [ ] `spec/protocol-v0.1.md` updated
-- [ ] `test/vectors/*.json` updated, or not applicable
+- [ ] `vectors/*.json` updated, or not applicable
 - [ ] A test that fails without this change and passes with it
 - [ ] Exit codes unchanged, or `npm run gen` re-run and `spec/exit-codes.md` committed
 

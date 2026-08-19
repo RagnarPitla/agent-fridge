@@ -8,7 +8,7 @@ body:
         Two related things belong here:
 
         - **"The agent ignored the claim and edited anyway."** This is expected in
-          the sense that FridgeBoard is cooperative and cannot stop a determined
+          the sense that Agent Fridge is cooperative and cannot stop a determined
           process. It is still a real problem worth fixing, and the fix is usually in
           the wording of the instruction block or in a hook. Please file it.
         - **"Please support vendor X."** A new instruction file, a new agent CLI, a

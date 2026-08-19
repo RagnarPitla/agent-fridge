@@ -1,4 +1,4 @@
-# Contributing to FridgeBoard
+# Contributing to Agent Fridge
 
 Thanks for helping. This project has an unusual shape: it is a **protocol** with a
 reference implementation, not an application. That changes what a good contribution
@@ -29,12 +29,32 @@ same, and new tests for existing behaviour.
 
 ## Getting set up
 
-You need Node 20.11 or newer. That is the whole list. There are no dependencies to
-install, no build step, and no code generation you have to run by hand.
+There are two implementations of the same protocol and you can contribute to
+either. Neither has dependencies to install.
+
+### Go, the primary implementation
+
+You need Go 1.21 or newer. That is the whole list: the module has no `require`
+block, so there is nothing to download.
 
 ```bash
-git clone https://github.com/RagnarPitla/fridgeboard.git
-cd fridgeboard
+git clone https://github.com/RagnarPitla/agent-fridge.git
+cd agent-fridge
+go run ./cmd/fridge --help     # it already works
+go test ./...                  # 109 tests, seconds
+go build -o fridge ./cmd/fridge
+```
+
+`internal/` is laid out to match the protocol document: `mutex/` is the one
+contested resource, `store/` is the record layer, `paths/` is normalisation and
+overlap, `render/` builds the derived views, `commands/` is the CLI surface.
+
+### Node, the second implementation
+
+You need Node 20.11 or newer. No dependencies, no build step, no code generation
+you have to run by hand.
+
+```bash
 node bin/fridge.mjs --help     # it already works
 npm run test:all               # takes well under a minute
 ```
@@ -42,26 +62,54 @@ npm run test:all               # takes well under a minute
 To use your working copy as the real `fridge` command:
 
 ```bash
-npm link            # now `fridge` on your PATH is this checkout
-npm unlink -g fridgeboard   # undo
+npm link                       # `fridge` on your PATH is now this checkout
+npm unlink -g agent-fridge     # undo
 ```
+
+### The rule that governs both
+
+**A behaviour change must land in both implementations, or in neither.**
+
+This is not busywork. Two independent implementations passing one vector suite
+is the only real evidence that `spec/protocol-v0.1.md` is sufficient rather than
+decorative. Writing the second implementation from the prose alone is what found
+eight places where the spec had drifted and one bug that every existing test had
+missed. If you change behaviour in one language only, `npm run parity` fails and
+you have created exactly the drift this project exists to prevent.
+
+If you genuinely cannot do both, say so in the pull request. A maintainer will
+either pair with you or hold the change. What we will not do is merge a
+divergence quietly.
 
 ---
 
 ## The checks
 
-Run all four before you push. CI runs exactly these, on Linux, macOS, and Windows,
-on Node 20 and Node 22, plus a PowerShell-only job.
+Run these before you push. CI runs exactly these, on Linux, macOS, and Windows.
 
 | Command | What it enforces |
 | --- | --- |
-| `npm run lint` | Every shipped file is ASCII-only, parses, and carries an SPDX header |
-| `npm run gen:check` | `spec/exit-codes.md` still matches `src/core/errors.mjs` |
-| `npm run test:all` | Unit, integration, and real multi-process concurrency tests |
+| `npm run lint` | Every shipped file, in both languages, is ASCII-only, parses, and carries an SPDX header |
+| `npm run gen:check` | `spec/exit-codes.md` still matches the exit-code table |
+| `npm run test:all` | Node unit, integration, and real multi-process concurrency tests |
+| `go test ./...` | The Go equivalents, including the same conformance vectors |
+| `gofmt -l internal cmd vectors` | Must print nothing |
+| `go vet ./...` | Must be silent |
+| `npm run conform` | This build agrees with `vectors/*.json` |
+| `npm run parity` | Go and Node give the same answer to the same command |
 | `npm run demo` | The before/after demo still proves zero notes lost |
 
+Shortcuts: `npm run go build`, `npm run go test`, `npm run go fmt`,
+`npm run go vet`, `npm run go dist` (cross-compiles all six targets).
+
 If `gen:check` fails, you edited the exit codes. Run `npm run gen` and commit the
-regenerated file; do not hand-edit `spec/exit-codes.md`.
+regenerated file; do not hand-edit `spec/exit-codes.md`. Remember that the table
+exists twice, in `src/core/errors.mjs` and `internal/errs/errs.go`, and both must
+agree.
+
+If `parity` fails, read the diff it prints before assuming the tool is wrong. It
+masks timestamps, ids, pids, hostnames, absolute paths, and remaining lease time.
+Anything else that differs is a real divergence.
 
 If `lint` fails on ASCII, you typed a smart quote, an em dash, an arrow, or an
 ellipsis. Use `'`, `-`, `->`, and `...`. This is not a style preference: non-ASCII
@@ -76,7 +124,7 @@ Tests live in three tiers and the tier decides how you write it.
 
 **`test/unit/`** - pure functions, no filesystem where avoidable, fast. Path
 normalization, glob matching, scope overlap, duration parsing, exit-code mapping.
-If you can express your case as data, add it to `test/vectors/*.json` instead of
+If you can express your case as data, add it to `vectors/*.json` instead of
 writing a bespoke test: those vectors are the language-neutral conformance suite
 that a Rust or Go implementation can run without reading any JavaScript.
 
@@ -173,7 +221,7 @@ mount, or a case-insensitive volume, all of which have bitten locking schemes be
 
 If the bug is "an agent ignored the claim and edited anyway", that is a real and
 interesting issue, but it is an *adapter* or *instruction* issue, not a locking bug.
-Label it as such. FridgeBoard is cooperative by design; see
+Label it as such. Agent Fridge is cooperative by design; see
 [docs/faq.md](docs/faq.md) and Section 12 of the spec.
 
 Security issues: do not open an issue. See [SECURITY.md](SECURITY.md).

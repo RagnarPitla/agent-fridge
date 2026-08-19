@@ -21,6 +21,7 @@ export const EXIT = {
   E_WAIT_TIMEOUT: 21,
   E_QUEUE_ABANDONED: 22,
   E_DRIFT: 30,
+  E_NONCONFORMANT: 31,
   E_PATH_INVALID: 40,
   E_FOREIGN_HOST: 41,
 };
@@ -44,6 +45,7 @@ export const EXIT_DOC = {
   E_WAIT_TIMEOUT: 'Wait deadline reached.',
   E_QUEUE_ABANDONED: 'The queue entry expired or was cancelled.',
   E_DRIFT: 'A --check found a problem: doctor findings, unrendered door, or stale adapter block.',
+  E_NONCONFORMANT: 'This build disagrees with the protocol vectors. Run: fridge conform --verbose',
   E_PATH_INVALID: 'Path rejected: traversal, escape, reserved location, or unsupported glob.',
   E_FOREIGN_HOST: 'That claim belongs to another host. Pass --allow-multihost to override.',
 };

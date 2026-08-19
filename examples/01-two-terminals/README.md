@@ -1,6 +1,6 @@
 # Example 01: two terminals, one checkout
 
-The smallest complete demonstration of what FridgeBoard is for. Two scripts, same
+The smallest complete demonstration of what Agent Fridge is for. Two scripts, same
 machine, same load, opposite outcomes.
 
 Nothing here is simulated. Both scripts spawn real background processes that write

@@ -1,24 +1,36 @@
 # Governance
 
-FridgeBoard is small, young, and opinionated. This document says who decides what,
+Agent Fridge is small, young, and opinionated. This document says who decides what,
 so that nobody has to guess.
 
 ---
 
 ## The shape of the project
 
-There are two artefacts and they are governed differently.
+There are three artefacts and they are governed differently.
 
 | Artefact | What it is | Change bar |
 | --- | --- | --- |
-| **The protocol** (`spec/protocol-v0.1.md`, `test/vectors/`) | The normative contract. On-disk layout, record schemas, algorithms, exit codes, invariants | High. Deliberate, versioned, discussed in the open |
-| **The reference implementation** (`src/`, `bin/`, `tools/`) | One conforming implementation, in Node, that proves the protocol is buildable | Normal. Bug fixes and improvements land quickly |
+| **The protocol** (`spec/protocol-v0.1.md`, `vectors/`) | The normative contract. On-disk layout, record schemas, algorithms, exit codes, invariants | High. Deliberate, versioned, discussed in the open |
+| **The primary implementation** (`cmd/`, `internal/`) | The Go binary that most people install. Conforming, not privileged | Normal. Bug fixes and improvements land quickly |
+| **The second implementation** (`bin/`, `src/`, `tools/`) | The Node implementation, kept green as conformance evidence | Normal, with the same behaviour bar |
 
 The protocol is the thing worth being careful about. Anyone may write another
 implementation in any language, and they should be able to do it from `spec/` and
-`test/vectors/` alone, without reading a line of JavaScript. That is the test of
+`vectors/` alone, without reading a line of our source. That is the test of
 whether the spec is doing its job. If you had to read the source to implement
 something, **that is a spec bug and a legitimate issue**.
+
+We know this test works, because we ran it on ourselves. The Go implementation
+was written from the prose, not from the JavaScript, and doing so found eight
+places where the spec had drifted from the tested behaviour plus one real bug
+that every existing test had missed. See
+[ADR 0002](docs/adr/0002-native-binary-and-two-implementations.md).
+
+**Neither implementation is normative.** Where they disagree, the spec decides;
+where the spec is silent, that is a spec bug. `npm run parity` diffs them command
+by command in CI so that a disagreement is a build failure rather than a
+discovery six months later.
 
 ---
 
@@ -35,11 +47,17 @@ Ragnar Pitla ([@RagnarPitla](https://github.com/RagnarPitla)), as the BDFL for a
 long as the project is this small, which is not a permanent arrangement (see
 Succession).
 
-**Implementers** maintain a non-reference implementation in another language. An
+**Implementers** maintain an implementation of the protocol in some language. An
 implementer that passes the conformance vectors gets a listing in the README, a
 seat in every protocol discussion, and a veto-by-argument on protocol changes that
 would be unimplementable in their language. Sensible protocols are shaped by the
 languages that have to implement them.
+
+This role is not hypothetical. It already has two occupants inside this
+repository, Go and Node, and the friction between them is deliberate: it is what
+keeps the specification honest. A third implementation in Rust, Python, or
+anything else is welcome and does not need permission. Run `fridge conform`
+against your build, open an issue with the output, and we will link you.
 
 ---
 
@@ -123,7 +141,7 @@ majority, including appointing a new lead.
 If the project is ever abandoned, the licence (Apache-2.0), the spec, and the
 conformance vectors are enough for anyone to fork and continue, which is the
 point of writing the spec down separately from the code. **Nothing about
-FridgeBoard requires this repository to keep existing.** Your `.fridge/` directory
+Agent Fridge requires this repository to keep existing.** Your `.fridge/` directory
 is plain files that you can read with `ls` and `cat`, and the protocol that
 describes them is a document you already have a copy of.
 
@@ -140,5 +158,5 @@ declined:
 - It will not add a dependency to save a hundred lines.
 - It will not couple itself to one vendor, one editor, or one multiplexer.
 
-Anything that would make FridgeBoard stop working on a plane, in an air-gapped
+Anything that would make Agent Fridge stop working on a plane, in an air-gapped
 network, or in a bare `sh` on a machine you just SSH'd into is out of scope.

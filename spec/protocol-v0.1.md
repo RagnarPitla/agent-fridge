@@ -2,7 +2,7 @@
 
 Status: **Draft, stable for 0.1.x**
 Protocol identifier: `wcp/0.1`
-Reference implementation: FridgeBoard (`fridge`), Apache-2.0
+Reference implementation: Agent Fridge (`fridge`), Apache-2.0
 Specification license: Apache-2.0
 
 This document is normative and self-contained. It is written so that a second
@@ -90,10 +90,10 @@ the current directory to the filesystem root, and the first directory containing
   sessions/<id>.json      one file per session
   claims/<id>.json        one file per claim
   leases/<claimId>.json   one file per live lease
-  notes/YYYY/MM/DD/<ts>--<seq>--<slug>--<id>.json   write-once
+  notes/YYYY/MM/DD/<ts>--<seq4>--<slug>--<id>.json  write-once
   inbox/<toSlug>/<id>.json                          directed messages
   queue/<id>.json                                   waiters (each names its claimId)
-  locks/registry.lock/                              the mutex, a directory
+  locks/registry.lock.d/                            the mutex, a directory
   tmp/                    staging area for atomic renames
   quarantine/             damaged records, preserved
   archive/                released claims, if retention is enabled
@@ -149,7 +149,7 @@ Rationale:
 `fridge init` also appends to `.gitattributes`:
 
 ```
-# FridgeBoard
+# Agent Fridge
 .fridge/notes/** -text -merge
 .fridge/DOOR.md  linguist-generated=true
 .fridge/views/** linguist-generated=true
@@ -182,7 +182,7 @@ Every JSON record MUST carry:
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `schema` | string | `wcp/0.1/<kind>`, for example `wcp/0.1/claim` |
-| `writer` | string | `<implementation>/<version>`, for example `fridgeboard/0.1.0` |
+| `writer` | string | `<implementation>/<version>`, for example `agent-fridge/0.1.0` |
 
 All JSON is written with sorted keys, two-space indentation, and a trailing
 newline, so that diffs are stable. All timestamps are ISO 8601 in UTC with
@@ -201,7 +201,7 @@ millisecond precision. All durations on disk are integer milliseconds with an
   "createdOnHost": "sha256:32c0f5c3a4da7f06",
   "schema": "wcp/0.1/workspace",
   "workspaceId": "wsp_01M0D3D28TSGQXH7475WNQMGCT",
-  "writer": "fridgeboard/0.1.0"
+  "writer": "agent-fridge/0.1.0"
 }
 ```
 
@@ -226,7 +226,7 @@ Defaults, all overridable by `fridge config set`:
   "policy": { "requireClaimForWrite": "advisory", "requireTaskOnClaim": true },
   "schema": "wcp/0.1/config",
   "workspaceId": "wsp_...",
-  "writer": "fridgeboard/0.1.0"
+  "writer": "agent-fridge/0.1.0"
 }
 ```
 
@@ -247,13 +247,14 @@ MUST happen under the registry mutex (Section 5).
   "slug": "claude",
   "user": "ragnarpitla",
   "vendor": "other",
-  "writer": "fridgeboard/0.1.0"
+  "writer": "agent-fridge/0.1.0"
 }
 ```
 
 The **filename is the identity key**, not the `id` field. `slug` is the actor
-name lowercased with every character outside `[a-z0-9._-]` replaced by `-`,
-truncated to 64 characters. Two actors whose names slug identically are the same
+name lowercased, NFC-normalised, with every run of characters outside
+`[a-z0-9-]` replaced by a single `-`, leading and trailing `-` trimmed, and the
+result truncated to 24 characters. An empty result becomes `anon`. Two actors whose names slug identically are the same
 actor. This makes actor creation a write-once `O_EXCL` operation and removes any
 need to scan a registry to answer "does this name exist".
 
@@ -275,7 +276,7 @@ protocol may depend on its value.**
   "startedAt": "2026-08-19T13:29:36.931Z",
   "tokens": { "clm_...": "BVAJmZPaoBdflVQD3U05G9U3A94hYHkR" },
   "updatedAt": "2026-08-19T13:29:44.125Z",
-  "writer": "fridgeboard/0.1.0"
+  "writer": "agent-fridge/0.1.0"
 }
 ```
 
@@ -315,14 +316,14 @@ millisecond.
     "materializer": "git"
   },
   "sessionId": "ses_...",
-  "state": "held",
+  "state": "active",
   "task": "refactor the router",
   "tokenHash": "sha256:0e87b646...",
   "ttlMs": 900000,
   "updatedAt": "2026-08-19T13:29:37.032Z",
   "vendor": "other",
   "workspaceId": "wsp_...",
-  "writer": "fridgeboard/0.1.0"
+  "writer": "agent-fridge/0.1.0"
 }
 ```
 
@@ -330,7 +331,7 @@ Claim states:
 
 | State | Meaning | Held? |
 | --- | --- | --- |
-| `held` | Normal ownership | Yes |
+| `active` | Normal ownership | Yes |
 | `handoff-offered` | Offered to another actor, still owned until accepted | **Yes** |
 | `released` | Voluntarily given up | No |
 | `expired` | Lease ran out and it was reaped | No |
@@ -361,14 +362,14 @@ trust boundary is a filesystem-permissions question, not a protocol question.
   "schema": "wcp/0.1/lease",
   "seq": 0,
   "sessionId": "ses_...",
-  "writer": "fridgeboard/0.1.0"
+  "writer": "agent-fridge/0.1.0"
 }
 ```
 
 The lease is a separate file from the claim so that a heartbeat, the hottest and
 most frequent write, touches a small file and never rewrites the claim.
 
-### 3.7 `notes/YYYY/MM/DD/<ts>--<seq>--<slug>--<id>.json`
+### 3.7 `notes/YYYY/MM/DD/<ts>--<seq4>--<slug>--<id>.json`
 
 ```json
 {
@@ -385,7 +386,7 @@ most frequent write, touches a small file and never rewrites the claim.
   "summary": "copilot was blocked on src/api/routes.ts",
   "ts": "2026-08-19T13:29:37.290Z",
   "type": "claim.denied",
-  "writer": "fridgeboard/0.1.0"
+  "writer": "agent-fridge/0.1.0"
 }
 ```
 
@@ -393,7 +394,8 @@ most frequent write, touches a small file and never rewrites the claim.
 `O_EXCL` and MUST NOT be modified or deleted afterwards, except by an explicit
 retention policy that moves whole day directories to `archive/`.
 
-The filename encodes sort order (`ts`, then `seq`) and attribution (`slug`) so
+`seq4` is `seq` zero-padded to 4 digits so that byte order and numeric order
+agree. The filename encodes sort order (`ts`, then `seq4`) and attribution (`slug`) so
 that a human can read the wall with `ls` and no tooling at all.
 
 Reserved note types, and the ones the reference implementation emits today:
@@ -433,7 +435,7 @@ unprefixed types outside this list.
   "state": "offered",
   "task": "refactor the router",
   "toName": "copilot",
-  "writer": "fridgeboard/0.1.0"
+  "writer": "agent-fridge/0.1.0"
 }
 ```
 
@@ -483,7 +485,7 @@ finding (`E_STATE_CORRUPT` where relevant, a `doctor` finding otherwise), and
 
 ## 5. The registry mutex
 
-Serialisation of decisions uses one lock: `.fridge/locks/registry.lock/`, a
+Serialisation of decisions uses one lock: `.fridge/locks/registry.lock.d/`, a
 **directory**, because `mkdir` is atomic on every filesystem this protocol
 targets, including SMB and NFS where `O_EXCL` on files is historically unsafe.
 
@@ -494,13 +496,13 @@ deadline = now + config.mutex.acquireTimeoutMs
 loop:
   if mkdir(lockdir) succeeds:
       writeAtomic(lockdir/owner.json, {pid, host, sessionId, op, acquiredAt})
-      return held
+      return active
   owner = readJsonSafe(lockdir/owner.json)
   if owner is unreadable and lockdir age > mutex.staleMs:  break it
   if owner.host == thisHost and not processAlive(owner.pid): break it
   if now - owner.acquiredAt > mutex.staleMs:                break it
   if now > deadline: fail E_MUTEX_TIMEOUT (exit 20)
-  sleep(backoff)   # 5ms, 10, 20, 40, 80, capped at 100ms, +/- 25% jitter
+  sleep(backoff)   # delay *= 1.6, capped at 250ms, with jitter
 ```
 
 "Break it" means: record a `lock.broken` note, remove `owner.json`, remove the
@@ -578,11 +580,11 @@ overlap(A, B):
           return true, "literal-prefix-nesting"
   if both A and B materialized without truncation:
       if setIntersect(A.materialized, B.materialized) != {}:
-          return true, "file-intersection"
+          return true, "materialized-intersection"
       return false
   if either pattern matches any file in the other's materialized set:
-      return true, "pattern-match"
-  return true, "conservative-unknown"      # cannot prove disjoint
+      return true, "cross-pattern-match"
+  return true, "truncated-scope-fallback"  # cannot prove disjoint
 ```
 
 `literalPrefix` is the portion of a pattern before its first metacharacter, cut
@@ -593,7 +595,7 @@ that does not exist. It MUST NEVER miss one. Every uncertain case, including
 truncated materialisation, resolves to "overlap".
 
 **Invariant I4 (no two held claims overlap).** For any two claims in a held
-state (`held` or `handoff-offered`) owned by different sessions, their scopes
+state (`active` or `handoff-offered`) owned by different sessions, their scopes
 MUST NOT overlap, unless both are `mode: "shared"`.
 
 Excludes narrow a scope for reporting, but by default they do **not** make two
@@ -638,7 +640,7 @@ claim(paths, mode, ttl, task):
           -> E_CONFLICT (10), listing every blocker and the overlap reason
       if I already hold an overlapping claim with the same mode:
           merge into it, extend the lease, return that claim id
-      token = 32 random bytes, base62
+      token = 24 random bytes, base64url
       writeAtomic(claims/<id>.json, {..., tokenHash: sha256(token)})
       writeAtomic(leases/<id>.json, {expiresAt: now + ttl})
       session.tokens[<id>] = token; writeAtomic(sessions/<me>.json)
@@ -685,7 +687,7 @@ claim is cleaned up by the next participant who needs it, with no daemon.
   offer carries its own TTL.
 - `accept <msgId>` transfers `actorId`, `sessionId`, and mints a **new** token
   under the mutex. The old token is invalidated by the rewrite. `decline`
-  returns the claim to `held` with the original owner.
+  returns the claim to `active` with the original owner.
 - `release --force` and `reap --force` are operator actions, recorded as
   `revoked` with an attributed note. There is no silent seizure.
 
@@ -710,7 +712,7 @@ Deleting every view MUST NOT lose information.
 `.fridge/DOOR.md` begins with:
 
 ```
-<!-- GENERATED by fridgeboard 0.1.0 at 2026-08-19T13:28:12.027Z state:e04e5bcf0f1a
+<!-- GENERATED by agent-fridge 0.1.0 at 2026-08-19T13:28:12.027Z state:e04e5bcf0f1a
      Source of truth: .fridge/. DO NOT EDIT. Regenerate with: fridge render -->
 ```
 
@@ -776,7 +778,7 @@ A second implementation is conforming if it:
 5. Refuses to operate on a `.fridge/VERSION` whose major or minor differs, with
    `E_PROTOCOL_VERSION` (exit 4), rather than guessing.
 6. Never writes metaphor vocabulary into a field name.
-7. Passes the conformance vectors in `test/vectors/` (path normalisation and
+7. Passes the conformance vectors in `vectors/` (path normalisation and
    overlap decisions, expressed as language-neutral JSON).
 
 Version negotiation: `wcp/0.1` files are read only by `0.1` implementations.
@@ -819,7 +821,7 @@ of two cooperating agents stepping on each other.
 
 ### 12.2 Ownership tokens
 
-Tokens are 32 random bytes from a CSPRNG, base62-encoded. Only `sha256(token)`
+Tokens are 24 random bytes from a CSPRNG, base64url-encoded. Only `sha256(token)`
 is stored on the claim. The plaintext lives in the owner's session file. This
 prevents a *cooperating* participant from accidentally releasing somebody else's
 claim by id. It does not, and is not meant to, stop a determined local attacker.

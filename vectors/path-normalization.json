@@ -2,6 +2,17 @@
   "protocol": "wcp/0.1",
   "title": "Path normalization conformance vectors",
   "note": "root is the workspace root. cwd is relative to root. expect is the normalized pattern, or the string E_PATH_INVALID.",
+  "fixture": {
+    "note": "Materialize this tree in a throwaway directory and use it as root. Required because normalization resolves real paths.",
+    "dirs": ["src/api", "src/ui", "docs"],
+    "files": {
+      "src/api/routes.ts": "export const routes = [];\n",
+      "src/api/db.ts": "export const db = 1;\n",
+      "src/ui/app.tsx": "export const App = () => null;\n",
+      "docs/guide.md": "# guide\n",
+      "README.md": "# demo\n"
+    }
+  },
   "cases": [
     { "name": "plain file", "input": "src/api/routes.ts", "expect": "src/api/routes.ts" },
     { "name": "leading ./ is stripped", "input": "./src/api/routes.ts", "expect": "src/api/routes.ts" },
