@@ -6,6 +6,7 @@ import { AppError } from './errors.mjs';
 import {
   createJsonExclusive, ensureDir, exists, listJson, readJsonSafe, walkJson, writeAtomic, writeJsonAtomic,
 } from './fsx.mjs';
+import { resolveInsideWorkspace } from './paths.mjs';
 import { compactTs, hostId, newId, nowIso, processAlive, slug, stableStringify } from './util.mjs';
 import { PRODUCT, PROTOCOL, STATE_DIR, WRITER } from '../brand.mjs';
 
@@ -91,19 +92,55 @@ export function openWorkspace({ repo, cwd = process.cwd(), requireInit = true } 
   const loaded = readJsonSafe(paths.config);
   if (!loaded.ok) throw new AppError('E_STATE_CORRUPT', `Unreadable config: ${paths.config}`, { hint: 'fridge doctor --fix' });
   const config = deepMerge(DEFAULT_CONFIG(loaded.value.workspaceId || newId('wsp')), loaded.value);
+  paths.door = validateDoorConfig(root, config);
   return { root, paths, initialized: true, config, cwd, version: versionRaw };
 }
 
-export const GITIGNORE = `# Managed by ${PRODUCT} (${PROTOCOL}).
-# Live coordination state is machine-local. The notes wall is shared history.
+export function validateDoorConfig(root, config, { shapeCode = 'E_STATE_CORRUPT' } = {}) {
+  const invalid = (message) => {
+    throw new AppError(shapeCode, message, shapeCode === 'E_STATE_CORRUPT' ? { hint: 'Fix .fridge/config.json or run fridge doctor --fix.' } : {});
+  };
+  if (!config?.door || typeof config.door !== 'object' || Array.isArray(config.door)) {
+    invalid('Config key door must be an object.');
+  }
+  if (typeof config.door.path !== 'string' || !config.door.path.trim()) {
+    invalid('Config key door.path must be a non-empty string.');
+  }
+  if (!Array.isArray(config.door.extraTargets)) {
+    invalid('Config key door.extraTargets must be an array of non-empty strings.');
+  }
+  for (const target of config.door.extraTargets) {
+    if (typeof target !== 'string' || !target.trim()) {
+      invalid('Config key door.extraTargets must be an array of non-empty strings.');
+    }
+    resolveInsideWorkspace(root, target, 'door.extraTargets entry');
+  }
+  return resolveInsideWorkspace(root, config.door.path, 'door.path');
+}
+
+/**
+ * The split between machine-local state and shared history.
+ *
+ * `notes.commit: false` has to be honoured here, not just in documentation:
+ * the notes wall is only kept out of Git if the ignore file stops un-ignoring
+ * it. Callers rewrite this file whenever that setting changes.
+ */
+export const gitignoreFor = ({ commitNotes = true } = {}) => `# Managed by ${PRODUCT} (${PROTOCOL}).
+# Live coordination state is machine-local.${commitNotes ? ' The notes wall is shared history.' : ' notes.commit is false, so the notes wall stays local too.'}
 /*
 !/.gitignore
 !/VERSION
 !/config.json
 !/workspace.json
-!/notes/
-!/actors/
+${commitNotes ? '!/notes/\n' : ''}!/actors/
 `;
+
+export const GITIGNORE = gitignoreFor({ commitNotes: true });
+
+export function writeGitignore(ws) {
+  const commitNotes = ws.config?.notes?.commit !== false;
+  return writeAtomic(path.join(ws.paths.dir, '.gitignore'), gitignoreFor({ commitNotes }), ws.paths.tmp);
+}
 
 export function initWorkspace(root, { force = false } = {}) {
   const paths = statePaths(root);
@@ -154,14 +191,23 @@ export function readActor(ws, name) {
   return r.ok ? r.value : null;
 }
 
-export function resolveActorName(ws, explicit) {
+export function resolveActorName(ws, explicit, { mutating = false } = {}) {
   if (explicit) return explicit;
   if (process.env.FRIDGE_ACTOR) return process.env.FRIDGE_ACTOR;
   const actors = listActors(ws);
-  if (actors.length === 1) return actors[0].name;
   if (actors.length === 0) {
     throw new AppError('E_NO_SESSION', 'Nobody has put their name on the door yet.', { hint: 'fridge join --agent <your-name>' });
   }
+  // Being the only name on the door is not proof of who is typing. Two
+  // terminals share one checkout, so inheriting the sole actor silently gives
+  // the second terminal the first one's claims, which is exactly the failure
+  // this tool exists to prevent. Reads may guess; writes may not.
+  if (mutating) {
+    throw new AppError('E_NO_SESSION', 'This command changes the door, so it has to know who you are.', {
+      hint: `Pass --agent <name>, or export FRIDGE_ACTOR=<name>. On the door: ${actors.map((a) => a.name).join(', ')}`,
+    });
+  }
+  if (actors.length === 1) return actors[0].name;
   throw new AppError('E_NO_SESSION', `More than one housemate is on this door (${actors.map((a) => a.name).join(', ')}).`, {
     hint: 'Pass --agent <name>, or export FRIDGE_ACTOR=<name>.',
   });
@@ -223,19 +269,67 @@ export function writeSession(ws, session) {
   return session;
 }
 
-export function requireActor(ws, { agent, vendor } = {}) {
-  const name = resolveActorName(ws, agent);
+/**
+ * Piggyback renewal: running any command at all is proof the session is alive.
+ *
+ * This lives next to identity resolution rather than being sprinkled over
+ * individual commands, because `lease.renewOnAnyCommand` is documented as
+ * *any* command, and the version that was sprinkled kept missing some.
+ */
+export function renewOwnLeases(ws, session) {
+  if (!session || process.env.FRIDGE_NO_RENEW === '1') return [];
+  if (!ws.config?.lease?.renewOnAnyCommand) return [];
+  const ratio = ws.config.lease.renewThresholdRatio;
+  const renewed = [];
+  for (const d of listClaims(ws)) {
+    const c = d.claim;
+    if (c.sessionId !== session.id) continue;
+    if (d.stale) continue;
+    const ttl = c.ttlMs || ws.config.lease.defaultTtlMs;
+    if (d.expiresInMs > ttl * ratio) continue;
+    writeLease(ws, c.id, { sessionId: session.id, ttlMs: ttl, renewals: (d.lease?.renewals || 0) + 1 });
+    renewed.push(c.id);
+  }
+  return renewed;
+}
+
+export function requireActor(ws, { agent, mutating = false } = {}) {
+  const name = resolveActorName(ws, agent, { mutating });
   const actor = readActor(ws, name);
   if (!actor) {
-    if (agent || process.env.FRIDGE_ACTOR) return joinActor(ws, { name, vendor });
     throw new AppError('E_NO_SESSION', `No housemate named '${name}' on this door.`, { hint: `fridge join --agent ${name}` });
   }
-  let session = readSession(ws, actor.currentSessionId);
-  if (!session) ({ session } = joinActor(ws, { name, vendor: actor.vendor }));
+  const session = readSession(ws, actor.currentSessionId);
+  if (!session) {
+    throw new AppError('E_NO_SESSION', `${actor.name} has no current session on this door.`, {
+      hint: `fridge join --agent ${actor.name} --vendor ${actor.vendor}`,
+    });
+  }
   ws.actor = actor;
   ws.session = session;
   ws.sessionId = session.id;
   return { actor, session };
+}
+
+/**
+ * Read-modify-write of one session record, always from what is on disk.
+ *
+ * A session object read before the mutex is a photograph, and writing it back
+ * afterwards silently reverts anything another process in the same session
+ * recorded meanwhile. Callers mutate the fresh copy this hands them.
+ */
+export function mutateSession(ws, sessionOrId, fn) {
+  const id = typeof sessionOrId === 'string' ? sessionOrId : sessionOrId?.id;
+  if (!id) return null;
+  const fresh = readSession(ws, id) || (typeof sessionOrId === 'object' ? { ...sessionOrId } : null);
+  if (!fresh) return null;
+  fn(fresh);
+  writeSession(ws, fresh);
+  if (typeof sessionOrId === 'object' && sessionOrId) {
+    sessionOrId.tokens = fresh.tokens;
+    sessionOrId.seq = fresh.seq;
+  }
+  return fresh;
 }
 
 // ---------------------------------------------------------------- notes
@@ -260,7 +354,7 @@ export function pin(ws, { type, actor, session, subject = null, summary = '', da
       seq, subject, summary, data, writer: WRITER,
     };
     try {
-      createJsonExclusive(path.join(dir, name), note);
+      createJsonExclusive(path.join(dir, name), note, ws.paths.tmp);
       return note;
     } catch (e) {
       if (e.code !== 'EEXIST') throw e;
@@ -324,21 +418,46 @@ export function decorate(ws, claim) {
   return { claim, lease, effectiveExpiresAt, expiresInMs: expiresMs - Date.now(), expired, stale, ownerAlive };
 }
 
-export function listClaims(ws, { includeStale = true } = {}) {
+/**
+ * Every claim on the door, refusing to answer at all if one of them is damaged.
+ *
+ * A record we cannot parse is not an absent claim. Skipping it makes an
+ * unreadable exclusive card look like free space, and the next `claim` hands
+ * the same paths to somebody else. So a corrupt card blocks every decision
+ * until a human or `doctor --fix` quarantines it.
+ */
+export function listClaims(ws, { includeStale = true, tolerateCorrupt = false } = {}) {
   const out = [];
+  const corrupt = [];
   for (const file of listJson(ws.paths.claims)) {
     const r = readJsonSafe(file);
-    if (!r.ok) continue;
+    if (!r.ok) { corrupt.push(path.relative(ws.root, file)); continue; }
     const d = decorate(ws, r.value);
     if (!includeStale && d.stale) continue;
     out.push(d);
   }
-  return out.sort((a, b) => a.claim.createdAt.localeCompare(b.claim.createdAt));
+  if (corrupt.length && !tolerateCorrupt) {
+    throw new AppError('E_STATE_CORRUPT', `${corrupt.length} claim record(s) cannot be read, so ownership is unknown.`, {
+      hint: 'fridge doctor --fix   (moves damaged records to .fridge/quarantine/)',
+      details: { corrupt },
+    });
+  }
+  out.sort((a, b) => a.claim.createdAt.localeCompare(b.claim.createdAt));
+  // Views tolerate damage but must never present it as an empty, safe board.
+  Object.defineProperty(out, 'corrupt', { value: corrupt, enumerable: false });
+  return out;
 }
 
 export function readClaim(ws, id) {
-  const r = readJsonSafe(claimFile(ws, id));
-  if (!r.ok) return null;
+  const file = claimFile(ws, id);
+  if (!exists(file)) return null;
+  const r = readJsonSafe(file);
+  if (!r.ok) {
+    throw new AppError('E_STATE_CORRUPT', `Card ${id} cannot be read, so its owner is unknown.`, {
+      hint: 'fridge doctor --fix',
+      details: { corrupt: [path.relative(ws.root, file)] },
+    });
+  }
   return decorate(ws, r.value);
 }
 
@@ -384,9 +503,9 @@ export function clearQueueFor(ws, claimId) {
 }
 
 /** Sweep fallen cards. Must be called while holding the registry mutex. */
-export function reapStale(ws, { actor = null, session = null, force = false } = {}) {
+export function reapStale(ws, { actor = null, session = null, force = false, tolerateCorrupt = false } = {}) {
   const reaped = [];
-  for (const d of listClaims(ws)) {
+  for (const d of listClaims(ws, { tolerateCorrupt })) {
     if (!d.stale && !(force && d.expired)) continue;
     archiveClaim(ws, d.claim, 'expired');
     pin(ws, {
@@ -417,6 +536,22 @@ export function listMessages(ws, actorName) {
 
 export function deleteMessage(ws, actorName, id) {
   try { fs.unlinkSync(path.join(inboxDir(ws, slug(actorName)), `${id}.json`)); return true; } catch { return false; }
+}
+
+/**
+ * Move a message out of the inbox with its terminal state recorded.
+ *
+ * The wire format says a message moves `offered -> accepted | declined |
+ * withdrawn | expired`. Deleting it loses that, and an offer whose outcome is
+ * unrecorded is exactly the kind of thing a stale acceptance can replay.
+ */
+export function archiveMessage(ws, message, state) {
+  const dir = path.join(ws.paths.dir, 'archive', 'messages');
+  ensureDir(dir);
+  const final = { ...message, state, closedAt: nowIso() };
+  writeJsonAtomic(path.join(dir, `${message.id}.json`), final, ws.paths.tmp);
+  deleteMessage(ws, message.toName, message.id);
+  return final;
 }
 
 export function findMessage(ws, actorName, id) {

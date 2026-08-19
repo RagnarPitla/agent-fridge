@@ -6,14 +6,17 @@ import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { AppError } from '../core/errors.mjs';
 import { parseDuration } from '../core/util.mjs';
+import { guardSecrets } from '../core/secrets.mjs';
 import { emit } from '../core/output.mjs';
-import { withMutex } from '../core/mutex.mjs';
+import { breakMutexIfRecoverable, withMutex } from '../core/mutex.mjs';
 import { exists, listJson, readJsonSafe, rmrf, unlinkQuiet, walkJson, writeAtomic, writeJsonAtomic } from '../core/fsx.mjs';
 import {
   archiveClaim, deleteMessage, findMessage, listActors, listClaims, listMessages, openWorkspace, pin, readActor,
-  readClaim, readSession, reapStale, requireActor, saveClaim, writeLease, writeMessage, writeSession, GITIGNORE,
+  readClaim, readSession, reapStale, requireActor, saveClaim, writeGitignore, writeLease, writeMessage, writeSession,
+  archiveMessage, gitignoreFor, mutateSession,
 } from '../core/store.mjs';
 import { autoRender, doorDrift, renderDoor } from '../core/render.mjs';
+import { resolveInsideWorkspace } from '../core/paths.mjs';
 import { hostId, humanMs, newId, nowIso, processAlive, randomToken, sha256, slug } from '../core/util.mjs';
 import * as adapterTemplates from '../adapters/templates.mjs';
 import { BIN, PRODUCT, PROTOCOL, STATE_DIR } from '../brand.mjs';
@@ -22,7 +25,8 @@ const open = (ctx) => openWorkspace({ repo: ctx.flags.repo, cwd: ctx.cwd });
 
 export async function handoff(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
+  guardSecrets({ '--note': ctx.flags.note, '--reason': ctx.flags.reason }, { allow: Boolean(ctx.flags['allow-secret-like']) });
   const id = ctx.positional[0];
   const to = ctx.flags.to;
   if (!id) throw new AppError('E_USAGE', 'Which card?', { hint: `${BIN} handoff <claim-id> --to <housemate> --note "..."` });
@@ -35,11 +39,6 @@ export async function handoff(ctx) {
   }
   const d = readClaim(ws, id);
   if (!d) throw new AppError('E_NOT_FOUND', `No card ${id}.`, { hint: `${BIN} board` });
-  if (d.claim.sessionId !== session.id && !ctx.flags.force) {
-    throw new AppError('E_NOT_OWNER', `Card ${id} belongs to ${d.claim.actorName}, not you.`, {
-      hint: 'You can only hand off your own cards.',
-    });
-  }
   const message = {
     schema: 'wcp/0.1/message',
     id: newId('msg'),
@@ -57,8 +56,25 @@ export async function handoff(ctx) {
     writer: ws.config.writer,
   };
   await withMutex(ws, 'handoff', () => {
+    // Re-read under the mutex. Everything decided from the copy above could
+    // be one accept out of date.
+    const live = readClaim(ws, id);
+    if (!live) throw new AppError('E_NOT_FOUND', `No card ${id}.`, { hint: `${BIN} board` });
+    if (live.claim.sessionId !== session.id && !ctx.flags.force) {
+      throw new AppError('E_NOT_OWNER', `Card ${id} belongs to ${live.claim.actorName}, not you.`, {
+        hint: 'You can only hand off your own cards.',
+      });
+    }
+    // One live offer per card. A second offer withdraws the first, so an
+    // unopened invitation in somebody's inbox can never be accepted later.
+    if (live.claim.state === 'handoff-offered' && live.claim.offeredMessageId) {
+      const prior = findMessage(ws, live.claim.offeredTo, live.claim.offeredMessageId);
+      if (prior) archiveMessage(ws, prior, 'withdrawn');
+    }
+    message.scope = live.claim.scope.include;
+    message.task = live.claim.task;
     writeMessage(ws, message);
-    saveClaim(ws, { ...d.claim, state: 'handoff-offered', offeredTo: target.name, offeredMessageId: message.id, updatedAt: nowIso() });
+    saveClaim(ws, { ...live.claim, state: 'handoff-offered', offeredTo: target.name, offeredMessageId: message.id, updatedAt: nowIso() });
   });
   pin(ws, {
     type: 'handoff.offered', actor, session,
@@ -80,7 +96,7 @@ export async function handoff(ctx) {
 
 export async function accept(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   const key = ctx.positional[0];
   if (!key) throw new AppError('E_USAGE', 'Accept which offer?', { hint: `${BIN} inbox` });
   const message = findMessage(ws, actor.name, key) || listMessages(ws, actor.name).find((m) => m.claimId === key);
@@ -88,8 +104,26 @@ export async function accept(ctx) {
   const result = await withMutex(ws, 'accept', () => {
     const d = readClaim(ws, message.claimId);
     if (!d) {
-      deleteMessage(ws, actor.name, message.id);
+      archiveMessage(ws, message, 'expired');
       throw new AppError('E_NOT_FOUND', `Card ${message.claimId} is already gone.`, { hint: `${BIN} claim ... to take the work fresh` });
+    }
+    // The offer in the inbox is a copy. Only the card says who it is currently
+    // offered to, and only the card knows whether that offer is still the live
+    // one. Without this, an old invitation left in an inbox can be redeemed
+    // after the work has already moved on, and the claim silently changes
+    // hands a second time.
+    const staleOffer = d.claim.state !== 'handoff-offered'
+      || d.claim.offeredMessageId !== message.id
+      || d.claim.offeredTo !== actor.name;
+    if (staleOffer) {
+      archiveMessage(ws, message, 'expired');
+      throw new AppError('E_CONFLICT', `That offer is no longer open: card ${message.claimId} is ${d.claim.state} and held by ${d.claim.actorName}.`, {
+        hint: `${BIN} inbox   |   ${BIN} board`,
+        details: {
+          claimId: message.claimId, messageId: message.id, holder: d.claim.actorName,
+          claimState: d.claim.state, currentOfferId: d.claim.offeredMessageId || null, offeredTo: d.claim.offeredTo || null,
+        },
+      });
     }
     const token = randomToken();
     const updated = {
@@ -109,9 +143,8 @@ export async function accept(ctx) {
     };
     saveClaim(ws, updated);
     writeLease(ws, updated.id, { sessionId: session.id, ttlMs: updated.ttlMs, renewals: 0 });
-    session.tokens = { ...(session.tokens || {}), [updated.id]: token };
-    writeSession(ws, session);
-    deleteMessage(ws, actor.name, message.id);
+    mutateSession(ws, session, (s) => { s.tokens = { ...(s.tokens || {}), [updated.id]: token }; });
+    archiveMessage(ws, message, 'accepted');
     return updated;
   });
   pin(ws, {
@@ -133,15 +166,20 @@ export async function accept(ctx) {
 
 export async function decline(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
+  guardSecrets({ '--reason': ctx.flags.reason }, { allow: Boolean(ctx.flags['allow-secret-like']) });
   const key = ctx.positional[0];
   if (!key) throw new AppError('E_USAGE', 'Decline which offer?', { hint: `${BIN} inbox` });
   const message = findMessage(ws, actor.name, key) || listMessages(ws, actor.name).find((m) => m.claimId === key);
   if (!message) throw new AppError('E_NOT_FOUND', `No offer '${key}' in your inbox.`, { hint: `${BIN} inbox` });
   await withMutex(ws, 'decline', () => {
     const d = readClaim(ws, message.claimId);
-    if (d) saveClaim(ws, { ...d.claim, state: 'active', offeredTo: null, offeredMessageId: null, updatedAt: nowIso() });
-    deleteMessage(ws, actor.name, message.id);
+    // Only clear the offer this message actually refers to. Declining an old
+    // invitation must not cancel whatever offer is live now.
+    if (d && d.claim.state === 'handoff-offered' && d.claim.offeredMessageId === message.id) {
+      saveClaim(ws, { ...d.claim, state: 'active', offeredTo: null, offeredMessageId: null, updatedAt: nowIso() });
+    }
+    archiveMessage(ws, message, 'declined');
   });
   pin(ws, {
     type: 'handoff.declined', actor, session,
@@ -177,7 +215,16 @@ function scanWorkspace(ws) {
   const add = (id, severity, message, opts = {}) => findings.push({ id, severity, message, fixable: Boolean(opts.fix), fixed: false, hint: opts.hint || null });
 
   if (!exists(ws.paths.version)) add('version-missing', 'error', `${STATE_DIR}/VERSION is missing.`, { fix: true });
-  if (!exists(path.join(ws.paths.dir, '.gitignore'))) add('gitignore-missing', 'warn', `${STATE_DIR}/.gitignore is missing; live state could be committed.`, { fix: true });
+  const ignoreFile = path.join(ws.paths.dir, '.gitignore');
+  if (!exists(ignoreFile)) add('gitignore-missing', 'warn', `${STATE_DIR}/.gitignore is missing; live state could be committed.`, { fix: true });
+  else {
+    const want = gitignoreFor({ commitNotes: ws.config?.notes?.commit !== false });
+    let have = '';
+    try { have = fs.readFileSync(ignoreFile, 'utf8'); } catch { have = ''; }
+    if (have !== want) {
+      add('gitignore-drift', 'warn', `${STATE_DIR}/.gitignore does not match notes.commit=${ws.config?.notes?.commit !== false}.`, { fix: true });
+    }
+  }
 
   const scannable = (f) => !f.startsWith(ws.paths.quarantine + path.sep) && !f.startsWith(ws.paths.tmp + path.sep);
   for (const file of walkJson(ws.paths.dir).filter(scannable)) {
@@ -185,7 +232,7 @@ function scanWorkspace(ws) {
     if (!r.ok) add(`corrupt:${path.relative(ws.root, file)}`, 'error', `Unreadable JSON: ${path.relative(ws.root, file)}`, { fix: true, hint: 'moved to .fridge/quarantine/ by --fix' });
   }
 
-  const claims = listClaims(ws);
+  const claims = listClaims(ws, { tolerateCorrupt: true });
   const stale = claims.filter((d) => d.stale);
   if (stale.length) add('stale-claims', 'warn', `${stale.length} card(s) have fallen off the door.`, { fix: true, hint: `${BIN} reap` });
   for (const d of claims) {
@@ -237,14 +284,16 @@ function scanWorkspace(ws) {
 
 async function applyFix(ws, f) {
   if (f.id === 'version-missing') writeAtomic(ws.paths.version, `${PROTOCOL}\n`, ws.paths.tmp);
-  else if (f.id === 'gitignore-missing') writeAtomic(path.join(ws.paths.dir, '.gitignore'), GITIGNORE, ws.paths.tmp);
-  else if (f.id === 'stale-claims') await withMutex(ws, 'doctor', () => reapStale(ws, {}));
+  else if (f.id === 'gitignore-missing' || f.id === 'gitignore-drift') writeGitignore(ws);
+  else if (f.id === 'stale-claims') await withMutex(ws, 'doctor', () => reapStale(ws, { tolerateCorrupt: true }));
   else if (f.id.startsWith('lease-missing:')) {
     const d = readClaim(ws, f.id.split(':')[1]);
     if (d) writeLease(ws, d.claim.id, { sessionId: d.claim.sessionId, ttlMs: d.claim.ttlMs, renewals: 0 });
   } else if (f.id.startsWith('orphan-lease:')) unlinkQuiet(path.join(ws.paths.leases, `${f.id.split(':')[1]}.json`));
   else if (f.id === 'tmp-junk') { rmrf(ws.paths.tmp); fs.mkdirSync(ws.paths.tmp, { recursive: true }); }
-  else if (f.id === 'mutex-held') rmrf(ws.paths.mutex);
+  else if (f.id === 'mutex-held') {
+    await breakMutexIfRecoverable(ws);
+  }
   else if (f.id === 'door-drift') writeAtomic(ws.paths.door, renderDoor(ws), ws.paths.tmp);
   else if (f.id.startsWith('adapter-drift:')) adapterTemplates.install(ws.root, [f.id.split(':')[1]], { tmpDir: ws.paths.tmp });
   else if (f.id.startsWith('corrupt:')) {
@@ -385,7 +434,7 @@ export async function simulate(ctx) {
     `Result: ${ok ? 'PASS' : 'FAIL'}`,
     '',
   ].join('\n');
-  if (ctx.flags.report) writeAtomic(path.resolve(ws.root, ctx.flags.report), report, ws.paths.tmp);
+  if (ctx.flags.report) writeAtomic(resolveInsideWorkspace(ws.root, ctx.flags.report, '--report'), report, ws.paths.tmp);
   if (!ok) {
     throw new AppError('E_INTERNAL', 'Simulation violated an invariant.', { details: { report, invariants } });
   }

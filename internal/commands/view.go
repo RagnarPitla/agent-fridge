@@ -12,6 +12,7 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/fsx"
 	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
 	"github.com/RagnarPitla/agent-fridge/internal/output"
+	"github.com/RagnarPitla/agent-fridge/internal/paths"
 	"github.com/RagnarPitla/agent-fridge/internal/render"
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
@@ -82,22 +83,33 @@ func cmdRender(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	doc := render.Door(ws)
+	// One snapshot for the body, the stamp and status.json, so all three
+	// describe the same instant.
 	snap := render.Snapshot(ws)
+	doc := render.DoorFrom(snap)
 	targets := []string{}
 	if out := ctx.Flags.Str("output"); out != "" {
-		targets = append(targets, resolveIn(ws.Root, out))
+		t, e := paths.ResolveInsideWorkspace(ws.Root, out, "--output")
+		if e != nil {
+			return 0, e
+		}
+		targets = append(targets, t)
 	} else {
 		targets = append(targets, ws.Paths.Door)
 	}
-	for _, t := range ws.Config.Strings("door.extraTargets") {
-		targets = append(targets, resolveIn(ws.Root, t))
+	for _, raw := range ws.Config.Strings("door.extraTargets") {
+		t, e := paths.ResolveInsideWorkspace(ws.Root, raw, "door.extraTargets entry")
+		if e != nil {
+			return 0, e
+		}
+		targets = append(targets, t)
 	}
 	if ctx.Flags.Bool("check") {
 		drifted := []string{}
 		for _, t := range targets {
 			text, _ := fsx.ReadTextOr(t)
-			if d, _, _ := render.Drift(ws, text); d {
+			found := render.StateKeyRE.FindStringSubmatch(text)
+			if found == nil || found[1] != render.StateKeyOf(snap) {
 				drifted = append(drifted, t)
 			}
 		}

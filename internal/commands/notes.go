@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"regexp"
 	"strconv"
 	"strings"
 
@@ -17,34 +16,15 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
 	"github.com/RagnarPitla/agent-fridge/internal/output"
 	"github.com/RagnarPitla/agent-fridge/internal/render"
+	"github.com/RagnarPitla/agent-fridge/internal/secrets"
 	"github.com/RagnarPitla/agent-fridge/internal/store"
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
 
-type secretPattern struct {
-	re   *regexp.Regexp
-	what string
-}
-
-var secrety = []secretPattern{
-	{regexp.MustCompile(`-----BEGIN [A-Z ]*PRIVATE KEY-----`), "a private key"},
-	{regexp.MustCompile(`\bghp_[A-Za-z0-9]{20,}\b`), "a GitHub token"},
-	{regexp.MustCompile(`\bgithub_pat_[A-Za-z0-9_]{20,}\b`), "a GitHub fine-grained token"},
-	{regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`), "an AWS access key id"},
-	{regexp.MustCompile(`\bsk-[A-Za-z0-9]{20,}\b`), "an OpenAI-style key"},
-	{regexp.MustCompile(`\bxox[baprs]-[A-Za-z0-9-]{10,}\b`), "a Slack token"},
-	{regexp.MustCompile(`(?i)\b(password|passwd|secret|api[_-]?key|client[_-]?secret)\s*[=:]\s*\S{8,}`), "a credential assignment"},
-}
-
 // LooksSecret names the first credential shape it recognises, or "".
-func LooksSecret(text string) string {
-	for _, p := range secrety {
-		if p.re.MatchString(text) {
-			return p.what
-		}
-	}
-	return ""
-}
+// Kept here so existing callers do not have to change; the table lives in
+// internal/secrets so every durable field is checked against the same list.
+func LooksSecret(text string) string { return secrets.Looks(text) }
 
 func readStdin(in io.Reader) string {
 	if f, ok := in.(*os.File); ok {
@@ -65,11 +45,8 @@ func cmdPin(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	actor, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
-		return 0, err
-	}
-	if _, err := maybeRenew(ws, session); err != nil {
 		return 0, err
 	}
 	text := strings.TrimSpace(strings.Join(ctx.Positional, " "))
@@ -80,13 +57,14 @@ func cmdPin(ctx *Ctx) (int, error) {
 		return 0, errs.New("E_USAGE", "A note needs some words.").
 			WithHint(brand.Bin + " pin \"rewrote the retry loop in src/api\"")
 	}
-	if found := LooksSecret(text); found != "" && !ctx.Flags.Bool("allow-secret-like") {
-		return 0, errs.New("E_USAGE", fmt.Sprintf("That note looks like it contains %s.", found)).
-			WithHint("Notes are committed history. Remove it, or pass --allow-secret-like if it is a false positive.")
-	}
 	kind := ctx.Flags.Str("kind")
 	if kind == "" {
 		kind = "note"
+	}
+	if err := secrets.Guard(map[string]string{
+		"That note": text, "--task": ctx.Flags.Str("task"), "--kind": kind,
+	}, ctx.Flags.Bool("allow-secret-like")); err != nil {
+		return 0, err
 	}
 	var subject any
 	if c := ctx.Flags.List("claim"); len(c) > 0 {
@@ -191,36 +169,4 @@ func cmdLog(ctx *Ctx) (int, error) {
 		}
 		w.Flush()
 	}
-}
-
-// maybeRenew is piggyback renewal: any command you run is proof you are still
-// alive, so it refreshes your own leases when they are more than half used up.
-// No daemon needed.
-func maybeRenew(ws *store.Workspace, session jsonx.Obj) ([]string, error) {
-	if session == nil || os.Getenv("FRIDGE_NO_RENEW") == "1" {
-		return nil, nil
-	}
-	if !ws.Config.Bool("lease.renewOnAnyCommand") {
-		return nil, nil
-	}
-	ratio := ws.Config.Num("lease.renewThresholdRatio")
-	renewed := []string{}
-	for _, d := range store.ListClaims(ws, true) {
-		c := d.Claim
-		if c.Str("sessionId") != session.Str("id") || d.Stale {
-			continue
-		}
-		ttl := int64(c.Num("ttlMs"))
-		if ttl == 0 {
-			ttl = int64(ws.Config.Num("lease.defaultTtlMs"))
-		}
-		if float64(d.ExpiresInMs) > float64(ttl)*ratio {
-			continue
-		}
-		if _, err := store.WriteLease(ws, c.Str("id"), session.Str("id"), ttl, int(d.Lease.Num("renewals"))+1); err != nil {
-			return nil, err
-		}
-		renewed = append(renewed, c.Str("id"))
-	}
-	return renewed, nil
 }

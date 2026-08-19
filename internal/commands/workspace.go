@@ -9,14 +9,18 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/RagnarPitla/agent-fridge/internal/adapters"
 	"github.com/RagnarPitla/agent-fridge/internal/brand"
 	"github.com/RagnarPitla/agent-fridge/internal/errs"
 	"github.com/RagnarPitla/agent-fridge/internal/fsx"
 	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
+	"github.com/RagnarPitla/agent-fridge/internal/mutex"
 	"github.com/RagnarPitla/agent-fridge/internal/output"
+	"github.com/RagnarPitla/agent-fridge/internal/paths"
 	"github.com/RagnarPitla/agent-fridge/internal/render"
+	"github.com/RagnarPitla/agent-fridge/internal/secrets"
 	"github.com/RagnarPitla/agent-fridge/internal/store"
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
@@ -49,6 +53,15 @@ func cmdInit(ctx *Ctx) (int, error) {
 			return 0, err
 		}
 	}
+	// The ignore file has to agree with notes.commit, or the setting is only
+	// documentation.
+	if err := store.WriteGitignore(ws); err != nil {
+		return 0, err
+	}
+	commitNotes := true
+	if v, ok := ws.Config.Get("notes.commit").(bool); ok {
+		commitNotes = v
+	}
 	gitattributes := store.EnsureGitAttributes(root)
 	installed := []adapters.Status{}
 	if !ctx.Flags.Bool("no-adapters") {
@@ -69,7 +82,7 @@ func cmdInit(ctx *Ctx) (int, error) {
 	parts := []string{
 		fmt.Sprintf("The fridge is on the wall.  %s", filepath.Join(root, brand.StateDir)),
 		fmt.Sprintf("  protocol      %s", brand.Protocol),
-		fmt.Sprintf("  git           %s/.gitignore keeps live state local; notes/ and actors/ are shared history", brand.StateDir),
+		fmt.Sprintf("  git           %s/.gitignore keeps live state local; %s", brand.StateDir, gitNotesLine(commitNotes)),
 	}
 	if gitattributes {
 		parts = append(parts, "  gitattributes .gitattributes updated (notes are never auto-merged)")
@@ -183,9 +196,6 @@ func cmdWhoami(ctx *Ctx) (int, error) {
 	}
 	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
-		return 0, err
-	}
-	if _, err := maybeRenew(ws, session); err != nil {
 		return 0, err
 	}
 	mine := []store.Decorated{}
@@ -311,16 +321,53 @@ func cmdConfig(ctx *Ctx) (int, error) {
 			return 0, errs.New("E_USAGE", fmt.Sprintf("Config key '%s' needs true or false.", key))
 		}
 		parsed = value == "true"
+	case jsonx.Arr:
+		raw, e := jsonx.Parse([]byte(value))
+		if e != nil {
+			return 0, errs.New("E_USAGE", fmt.Sprintf("Config key '%s' needs a JSON array.", key))
+		}
+		arr, ok := raw.(jsonx.Arr)
+		if !ok {
+			return 0, errs.New("E_USAGE", fmt.Sprintf("Config key '%s' needs a JSON array.", key))
+		}
+		parsed = arr
 	}
-	if err := ws.Config.Set(key, parsed); err != nil {
-		return 0, err
-	}
-	if err := fsx.WriteJSONAtomic(ws.Paths.Config, ws.Config, ws.Paths.Tmp); err != nil {
+	// Re-read inside the mutex and write back only the one key. Two terminals
+	// each setting a different key from a copy they read a second ago would
+	// otherwise each write a whole file, and the second one silently reverts
+	// the first.
+	var previous any
+	if err := mutex.With(ws, "config", func() error {
+		fresh, e := store.Open(store.OpenOptions{Repo: ws.Root, Cwd: ctx.Cwd, RequireInit: true})
+		if e != nil {
+			return e
+		}
+		previous = fresh.Config.Get(key)
+		if e := fresh.Config.Set(key, parsed); e != nil {
+			return e
+		}
+		door, e := store.ValidateDoorConfig(fresh.Root, fresh.Config, "E_USAGE")
+		if e != nil {
+			return e
+		}
+		fresh.Paths.Door = door
+		if e := fsx.WriteJSONAtomic(fresh.Paths.Config, fresh.Config, fresh.Paths.Tmp); e != nil {
+			return e
+		}
+		// notes.commit is only real if the ignore file agrees with it.
+		if key == "notes.commit" {
+			if e := store.WriteGitignore(fresh); e != nil {
+				return e
+			}
+		}
+		ws.Config = fresh.Config
+		return nil
+	}, nil); err != nil {
 		return 0, err
 	}
 	return ctx.emit("config", output.Result{
-		Data: jsonx.Obj{"key": key, "value": parsed, "previous": current},
-		Text: fmt.Sprintf("%s = %s (was %s)", key, scalarText(parsed), scalarText(current)),
+		Data: jsonx.Obj{"key": key, "value": parsed, "previous": previous},
+		Text: fmt.Sprintf("%s = %s (was %s)", key, scalarText(parsed), scalarText(previous)),
 	})
 }
 
@@ -462,6 +509,8 @@ func cmdAdapters(ctx *Ctx) (int, error) {
 var legacyTodo = "To-do.done.md"
 var legacyUpdates = "shared-development-updates.md"
 
+const maxMigrationSourceBytes = 10 * 1024 * 1024
+
 type legacyEntry struct {
 	Heading string
 	Body    string
@@ -559,7 +608,13 @@ func cmdMigrate(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	dryRun := ctx.Flags.Bool("dry-run")
+	var actor, session jsonx.Obj
+	if dryRun {
+		actor, session, err = store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	} else {
+		actor, session, err = store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -593,63 +648,146 @@ func cmdMigrate(ctx *Ctx) (int, error) {
 			fmt.Sprintf("No legacy files found (%s, %s).", legacyTodo, legacyUpdates)).
 			WithHint(brand.Bin + " migrate --todo-done <file> --updates <file>")
 	}
-	dryRun := ctx.Flags.Bool("dry-run")
+	type preparedEntry struct {
+		entry     legacyEntry
+		credited  jsonx.Obj
+		detected  string
+		firstLine string
+	}
+	type preparedTarget struct {
+		rel, kind, abs, raw string
+		entries             []preparedEntry
+	}
+	prepared := []preparedTarget{}
 	imported := jsonx.Arr{}
 	count := 0
 	for _, t := range targets {
-		abs := filepath.Join(ws.Root, filepath.FromSlash(t.rel))
+		input := t.rel
+		if !filepath.IsAbs(input) {
+			input = filepath.Join(ws.Root, filepath.FromSlash(input))
+		}
+		abs, err := paths.ResolveInsideWorkspace(ws.Root, input, t.kind)
+		if err != nil {
+			return 0, err
+		}
+		rel, err := filepath.Rel(ws.Root, abs)
+		if err != nil {
+			return 0, err
+		}
+		rel = filepath.ToSlash(rel)
+		if stat, err := os.Stat(abs); err != nil {
+			return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("Cannot read %s: %v", t.rel, err))
+		} else if stat.Size() > maxMigrationSourceBytes {
+			return 0, errs.New("E_USAGE", fmt.Sprintf("%s is larger than the 10 MiB migration limit.", rel)).
+				WithHint("Split the legacy Markdown into smaller files and migrate them separately.")
+		}
 		raw, ok := fsx.ReadTextOr(abs)
 		if !ok {
 			return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("Cannot read %s: ENOENT", t.rel))
 		}
-		for _, e := range parseLegacy(raw, t.rel) {
+		if err := secrets.Guard(map[string]string{rel: raw}, ctx.Flags.Bool("allow-secret-like")); err != nil {
+			return 0, err
+		}
+		pt := preparedTarget{rel: rel, kind: t.kind, abs: abs, raw: raw}
+		for _, e := range parseLegacy(raw, rel) {
 			credited, detected := attributeEntry(e, authorMap, known, actor)
 			firstLine := strings.SplitN(e.Body, "\n", 2)[0]
-			if !dryRun {
-				var det any
-				if detected != "" {
-					det = detected
-				}
-				var head any
-				if e.Heading != "" {
-					head = e.Heading
-				}
-				if _, err := store.Pin(ws, store.PinArgs{
-					Type: t.kind, Actor: credited, Session: session,
-					Subject: jsonx.Obj{"kind": "file", "id": t.rel},
-					Summary: sliceStr(firstLine, 200),
-					Data: jsonx.Obj{
-						"sourceFile": t.rel, "heading": head, "body": e.Body,
-						"importedAt": util.Now(), "importedBy": actor.Str("name"),
-						"attributedTo": credited.Str("name"), "detectedAuthor": det,
-					},
-				}); err != nil {
-					return 0, err
-				}
-			}
+			pt.entries = append(pt.entries, preparedEntry{
+				entry: e, credited: credited, detected: detected, firstLine: firstLine,
+			})
 			var head any
 			if e.Heading != "" {
 				head = e.Heading
 			}
 			imported = append(imported, jsonx.Obj{
-				"file": t.rel, "heading": head, "attributedTo": credited.Str("name"),
+				"file": rel, "heading": head, "attributedTo": credited.Str("name"),
 				"summary": sliceStr(firstLine, 120),
 			})
 			count++
 		}
-		if !dryRun && ctx.Flags.Bool("freeze") {
-			banner := strings.Join([]string{
-				"<!-- FROZEN by fridge migrate.",
-				fmt.Sprintf("     Imported into %s/notes/ on %s by %s.", brand.StateDir, util.Now(), actor.Str("name")),
-				fmt.Sprintf("     Do not edit this file. Pin notes with: %s pin \"...\"", brand.Bin),
-				fmt.Sprintf("     Read history with: %s log -->", brand.Bin),
-				"",
-			}, "\n")
-			if !strings.HasPrefix(raw, "<!-- FROZEN") {
-				if err := fsx.WriteAtomic(abs, banner+raw, ws.Paths.Tmp); err != nil {
-					return 0, err
+		prepared = append(prepared, pt)
+	}
+	if !dryRun {
+		if os.Getenv("FRIDGE_TEST") == "1" && os.Getenv("FRIDGE_FAULT") == "delay-migrate-after-preflight" {
+			_ = os.WriteFile(filepath.Join(ws.Paths.Tmp, "migrate-preflight-ready"), []byte("ready\n"), 0o644)
+			deadline := time.Now().Add(5 * time.Second)
+			for !fsx.Exists(filepath.Join(ws.Paths.Tmp, "migrate-preflight-continue")) {
+				if time.Now().After(deadline) {
+					return 0, errs.New("E_INTERNAL", "Timed out waiting at the migration test seam.")
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+		assertUnchanged := func(target preparedTarget) error {
+			current, ok := fsx.ReadTextOr(target.abs)
+			if !ok {
+				return errs.New("E_NOT_FOUND", fmt.Sprintf("Cannot reread %s.", target.rel))
+			}
+			if current != target.raw {
+				return errs.New("E_CONFLICT", fmt.Sprintf("%s changed while migration was preparing.", target.rel)).
+					WithHint("Review the new edits, then run fridge migrate again.").
+					WithDetails(jsonx.Obj{"file": target.rel})
+			}
+			return nil
+		}
+		err = mutex.WithRenewable(ws, "migrate", func(refresh func() error) error {
+			for _, target := range prepared {
+				if err := refresh(); err != nil {
+					return err
+				}
+				if err := assertUnchanged(target); err != nil {
+					return err
 				}
 			}
+			for _, t := range prepared {
+				for _, p := range t.entries {
+					if err := refresh(); err != nil {
+						return err
+					}
+					var det any
+					if p.detected != "" {
+						det = p.detected
+					}
+					var head any
+					if p.entry.Heading != "" {
+						head = p.entry.Heading
+					}
+					if _, err := store.Pin(ws, store.PinArgs{
+						Type: t.kind, Actor: p.credited, Session: session,
+						Subject: jsonx.Obj{"kind": "file", "id": t.rel},
+						Summary: sliceStr(p.firstLine, 200),
+						Data: jsonx.Obj{
+							"sourceFile": t.rel, "heading": head, "body": p.entry.Body,
+							"importedAt": util.Now(), "importedBy": actor.Str("name"),
+							"attributedTo": p.credited.Str("name"), "detectedAuthor": det,
+						},
+					}); err != nil {
+						return err
+					}
+				}
+				if ctx.Flags.Bool("freeze") && !strings.HasPrefix(t.raw, "<!-- FROZEN") {
+					if err := refresh(); err != nil {
+						return err
+					}
+					if err := assertUnchanged(t); err != nil {
+						return err
+					}
+					banner := strings.Join([]string{
+						"<!-- FROZEN by fridge migrate.",
+						fmt.Sprintf("     Imported into %s/notes/ on %s by %s.", brand.StateDir, util.Now(), actor.Str("name")),
+						fmt.Sprintf("     Do not edit this file. Pin notes with: %s pin \"...\"", brand.Bin),
+						fmt.Sprintf("     Read history with: %s log -->", brand.Bin),
+						"",
+					}, "\n")
+					if err := fsx.WriteAtomic(t.abs, banner+t.raw, ws.Paths.Tmp); err != nil {
+						return err
+					}
+				}
+			}
+			return nil
+		}, nil)
+		if err != nil {
+			return 0, err
 		}
 	}
 	verb := "Imported"
@@ -659,7 +797,7 @@ func cmdMigrate(ctx *Ctx) (int, error) {
 		render.Auto(ws)
 	}
 	rels := []string{}
-	for _, t := range targets {
+	for _, t := range prepared {
 		rels = append(rels, t.rel)
 	}
 	lines := []string{fmt.Sprintf("%s %d entr(ies) from %s.", verb, count, strings.Join(rels, ", "))}
@@ -689,4 +827,11 @@ func sliceStr(s string, n int) string {
 		return string(r[:n])
 	}
 	return s
+}
+
+func gitNotesLine(commitNotes bool) string {
+	if commitNotes {
+		return "notes/ and actors/ are shared history"
+	}
+	return "notes.commit is false, so notes/ stays local too"
 }

@@ -8,6 +8,10 @@ import { stableStringify, ulid } from './util.mjs';
 const IS_WIN = process.platform === 'win32';
 const RENAME_RETRY = ['EPERM', 'EACCES', 'EBUSY'];
 
+export const seams = {
+  beforeExclusivePublish: () => {},
+};
+
 export function ensureDir(dir) {
   try {
     fs.mkdirSync(dir, { recursive: true });
@@ -74,21 +78,58 @@ export function writeAtomic(finalPath, text, tmpDir) {
   return finalPath;
 }
 
-/** Write-once create. Used for notes: a note is written exactly once, never rewritten. */
-export function createExclusive(finalPath, text) {
-  ensureDir(path.dirname(finalPath));
-  const fd = fs.openSync(finalPath, 'wx', 0o644);
+/**
+ * Write-once create, with the content complete before the name exists.
+ *
+ * Opening the final path and then writing publishes an empty file first, and a
+ * concurrent reader that catches that window sees a note with no note in it.
+ * Staging in tmp and hard-linking into place makes the name appear only when
+ * the bytes are already on disk, and `link` still fails with EEXIST, so this
+ * keeps the exclusivity the caller relies on to detect id collisions.
+ */
+export function createExclusive(finalPath, text, tmpDir) {
+  const dir = path.dirname(finalPath);
+  ensureDir(dir);
+  const staging = tmpDir || path.join(dir, '.tmp');
+  ensureDir(staging);
+  const tmp = path.join(staging, `${process.pid}-${ulid()}.tmp`);
+  let fd;
   try {
+    fd = fs.openSync(tmp, 'wx', 0o644);
     fs.writeFileSync(fd, text);
     fs.fsyncSync(fd);
+  } catch (e) {
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* ignore */ }
+    try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+    throw new AppError('E_STATE_CORRUPT', `Failed staging ${finalPath}: ${e.message}`);
   } finally {
-    fs.closeSync(fd);
+    if (fd !== undefined) try { fs.closeSync(fd); } catch { /* ignore */ }
   }
+  seams.beforeExclusivePublish(tmp, finalPath);
+  try {
+    fs.linkSync(tmp, finalPath);
+  } catch (e) {
+    if (e.code === 'EEXIST') { try { fs.unlinkSync(tmp); } catch { /* ignore */ } throw e; }
+    // Filesystems without hard links (some SMB shares, FAT). Rename is still
+    // atomic in content, and the caller's names carry a random id, so losing
+    // link's exclusivity here costs nothing that matters.
+    if (fs.existsSync(finalPath)) {
+      try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+      const err = new Error(`EEXIST: ${finalPath}`);
+      err.code = 'EEXIST';
+      throw err;
+    }
+    fs.renameSync(tmp, finalPath);
+    fsyncDir(dir);
+    return finalPath;
+  }
+  try { fs.unlinkSync(tmp); } catch { /* ignore */ }
+  fsyncDir(dir);
   return finalPath;
 }
 
 export const writeJsonAtomic = (p, obj, tmpDir) => writeAtomic(p, stableStringify(obj), tmpDir);
-export const createJsonExclusive = (p, obj) => createExclusive(p, stableStringify(obj));
+export const createJsonExclusive = (p, obj, tmpDir) => createExclusive(p, stableStringify(obj), tmpDir);
 
 export function readJson(file) {
   const raw = fs.readFileSync(file, 'utf8');

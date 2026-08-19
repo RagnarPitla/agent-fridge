@@ -70,15 +70,19 @@ fridge whoami
 It is a label for the board and nothing else. No behaviour depends on it, and no
 model provider is involved anywhere in the codebase.
 
-### Resolution: no guessing, ever
+### Resolution: mutations never guess
 
-Agent Fridge decides who you are in exactly this order and stops at the first
-hit:
+Agent Fridge first looks for explicit identity in this order:
 
 1. `--agent <name>` on the command line
 2. the `FRIDGE_ACTOR` environment variable
-3. the sole actor, if the workspace has exactly one
-4. otherwise `E_NO_SESSION`, exit `7`
+
+Every actor-owned mutation and attributed note needs one of those two.
+Identity-free administration such as `init` and configuration is separate. A
+read-only command that needs identity may infer the sole actor when the
+workspace has exactly one, but that inference never creates a session or renews
+a lease. A supplied name that has not joined is `E_NO_SESSION`, not an implicit
+`join`.
 
 A conforming implementation must not infer identity from a pid, a tty, a parent
 process, or the Git author

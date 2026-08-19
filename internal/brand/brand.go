@@ -6,9 +6,10 @@ package brand
 
 const (
 	Product  = "Agent Fridge"
+	Tagline  = "The shared whiteboard for AI coding agents."
 	Package  = "agent-fridge"
 	Bin      = "fridge"
-	Version  = "0.2.1"
+	Version  = "0.2.2"
 	Protocol = "wcp/0.1"
 	StateDir = ".fridge"
 	Writer   = Package + "/" + Version

@@ -216,6 +216,44 @@ jobs:
           Set-Location ..
           Write-Host 'native powershell exit-code contract holds'
 
+      - name: Node and Go run Windows batch commands
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path ci-run-windows | Out-Null
+          Set-Location ci-run-windows
+          git init -q .
+          Set-Content -Path run-ok.cmd -Value "@echo off`r`necho batch-ok %1"
+          $nodeFridge = Join-Path $env:GITHUB_WORKSPACE 'bin/fridge.mjs'
+          $goFridge = Join-Path $env:GITHUB_WORKSPACE 'fridge.exe'
+
+          node $nodeFridge init
+          node $nodeFridge join --agent runner --vendor human
+          node $nodeFridge run --agent runner --claim "node/**" --task "node batch" -- .\run-ok alpha
+          if ($LASTEXITCODE -ne 0) { throw "Node batch command failed with $LASTEXITCODE" }
+          node $nodeFridge run --agent runner --claim "node-missing/**" -- definitely-not-a-fridge-command
+          if ($LASTEXITCODE -ne 127) { throw "Node missing command should return 127, got $LASTEXITCODE" }
+
+          & $goFridge run --agent runner --claim "go/**" --task "go batch" -- .\run-ok beta
+          if ($LASTEXITCODE -ne 0) { throw "Go batch command failed with $LASTEXITCODE" }
+          & $goFridge run --agent runner --claim "go-missing/**" -- definitely-not-a-fridge-command
+          if ($LASTEXITCODE -ne 127) { throw "Go missing command should return 127, got $LASTEXITCODE" }
+
+          # Bare commands must follow PATH. A same-named file in the shared
+          # checkout must not shadow the tool selected by the terminal.
+          $trustedBin = Join-Path (Get-Location) 'trusted-bin'
+          New-Item -ItemType Directory -Force -Path $trustedBin | Out-Null
+          Set-Content -Path (Join-Path $trustedBin 'fridge-path-probe.cmd') -Value "@echo off`r`nexit /b 0"
+          Set-Content -Path fridge-path-probe.cmd -Value "@echo off`r`nexit /b 23"
+          $env:PATH = "$trustedBin;$env:PATH"
+
+          node $nodeFridge run --agent runner --claim "node-path/**" -- fridge-path-probe
+          if ($LASTEXITCODE -ne 0) { throw "Node preferred the checkout over PATH: $LASTEXITCODE" }
+          & $goFridge run --agent runner --claim "go-path/**" -- fridge-path-probe
+          if ($LASTEXITCODE -ne 0) { throw "Go preferred the checkout over PATH: $LASTEXITCODE" }
+
+          Set-Location ..
+          Write-Host 'Windows batch execution contract holds'
+
       - name: Quick start, in PowerShell, with PowerShell quoting
         run: |
           $ErrorActionPreference = 'Stop'

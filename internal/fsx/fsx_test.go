@@ -95,15 +95,55 @@ func TestConcurrentWritersNeverInterleave(t *testing.T) {
 func TestCreateExclusiveRefusesToOverwrite(t *testing.T) {
 	root := scratch(t, "fsx")
 	target := filepath.Join(root, "once.txt")
-	if err := CreateExclusive(target, "one\n"); err != nil {
+	if err := CreateExclusive(target, "one\n", ""); err != nil {
 		t.Fatal(err)
 	}
-	if err := CreateExclusive(target, "two\n"); err == nil {
+	if err := CreateExclusive(target, "two\n", ""); err == nil {
 		t.Fatalf("second create must fail")
 	}
 	got, _ := ReadTextOr(target)
 	if got != "one\n" {
 		t.Errorf("file was overwritten: %q", got)
+	}
+}
+
+func TestCreateExclusivePublishesOnlyCompleteContent(t *testing.T) {
+	root := scratch(t, "fsx")
+	tmpDir := filepath.Join(root, "tmp")
+	finalPath := filepath.Join(root, "notes", "atomic.json")
+	complete := `{"schema":"wcp/0.1/note","summary":"complete before publish"}`
+	observed := false
+	previous := beforeExclusivePublish
+	beforeExclusivePublish = func(tmp, final string) {
+		observed = true
+		if final != finalPath {
+			t.Fatalf("published %s, want %s", final, finalPath)
+		}
+		if _, err := os.Stat(final); !os.IsNotExist(err) {
+			t.Fatalf("final path existed before publication: %v", err)
+		}
+		raw, err := os.ReadFile(tmp)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != complete {
+			t.Fatalf("staged content = %q, want %q", raw, complete)
+		}
+	}
+	t.Cleanup(func() { beforeExclusivePublish = previous })
+
+	if err := CreateExclusive(finalPath, complete, tmpDir); err != nil {
+		t.Fatal(err)
+	}
+	if !observed {
+		t.Fatal("pre-publication seam was not reached")
+	}
+	raw, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != complete {
+		t.Fatalf("published content = %q, want %q", raw, complete)
 	}
 }
 

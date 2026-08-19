@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { AppError, EXIT, EXIT_DOC } from './core/errors.mjs';
 import { emitError } from './core/output.mjs';
-import { BIN, PACKAGE, PRODUCT, PROTOCOL, VERSION } from './brand.mjs';
+import { withMutex } from './core/mutex.mjs';
+import { openWorkspace, renewOwnLeases, requireActor } from './core/store.mjs';
+import { autoRender } from './core/render.mjs';
+import { BIN, PACKAGE, PRODUCT, PROTOCOL, TAGLINE, VERSION } from './brand.mjs';
 import * as workspace from './commands/workspace.mjs';
 import * as claims from './commands/claims.mjs';
 import * as notes from './commands/notes.mjs';
@@ -10,7 +13,7 @@ import * as view from './commands/view.mjs';
 import * as coord from './commands/coord.mjs';
 import * as conformance from './commands/conform.mjs';
 
-const GLOBAL_BOOL = ['json', 'quiet', 'verbose', 'no-color', 'yes', 'help', 'allow-multihost'];
+const GLOBAL_BOOL = ['json', 'quiet', 'verbose', 'no-color', 'yes', 'help', 'allow-multihost', 'allow-secret-like'];
 const GLOBAL_VALUE = ['repo', 'agent', 'vendor'];
 
 export const COMMANDS = {
@@ -26,7 +29,7 @@ export const COMMANDS = {
   reap: { fn: claims.reap, summary: 'Sweep cards that fell off the door.', bool: ['dry-run', 'force'], value: [], exits: ['E_MUTEX_TIMEOUT'] },
   wait: { fn: claims.wait, summary: 'Wait for a card to come down.', bool: [], value: ['timeout'], exits: ['E_WAIT_TIMEOUT', 'E_NOT_FOUND'] },
   run: { fn: claims.run, summary: 'Claim, run a command with automatic check-ins, then release.', bool: ['keep-on-failure'], value: ['claim', 'task', 'ttl', 'mode'], exits: ['E_CONFLICT', 'E_USAGE'] },
-  pin: { fn: notes.pin, summary: 'Pin a durable note to the door.', bool: ['allow-secret-like'], value: ['kind', 'claim', 'task'], exits: ['E_USAGE'] },
+  pin: { fn: notes.pin, summary: 'Pin a durable note to the door.', bool: [], value: ['kind', 'claim', 'task'], exits: ['E_USAGE'] },
   log: { fn: notes.log, summary: 'Read the notes wall.', bool: ['follow'], value: ['limit', 'since', 'until', 'actor', 'type'], exits: [] },
   board: { fn: view.board, summary: 'Read the door.', bool: ['write', 'stdout', 'check', 'wide'], value: [], exits: ['E_DRIFT'] },
   status: { fn: view.status, summary: 'Same data as the door, machine first.', bool: ['mine', 'wide', 'watch'], value: ['interval'], exits: [] },
@@ -92,7 +95,7 @@ function usage() {
   return [
     `${PRODUCT} ${VERSION} (protocol ${PROTOCOL})`,
     '',
-    'A fridge door for your repo. Everyone pins their own note. Nobody erases the board.',
+    `${TAGLINE} Everyone pins their own note. Nobody erases the board.`,
     '',
     `usage: ${BIN} <command> [args] [flags]`,
     '',
@@ -101,7 +104,7 @@ function usage() {
     '',
     'aliases: ' + Object.entries(ALIASES).map(([a, b]) => `${a}=${b}`).join(', '),
     '',
-    'global flags: --json --quiet --verbose --no-color --repo <path> --agent <name> --help',
+    'global flags: --json --quiet --verbose --no-color --repo <path> --agent <name> --allow-secret-like --help',
     '',
     `60-second start:  ${BIN} init && ${BIN} join --agent me && ${BIN} claim "src/**" --task "work" && ${BIN} board`,
     `docs: https://github.com/RagnarPitla/${PACKAGE}`,
@@ -120,6 +123,35 @@ function commandHelp(name) {
     'exit codes:',
     ...exits,
   ].join('\n');
+}
+
+async function renewForInvocation(ctx) {
+  const explicit = ctx.flags.agent || process.env.FRIDGE_ACTOR;
+  if (!explicit || ['init', 'join', 'version', 'conform'].includes(ctx.command)) return;
+  let ws;
+  try {
+    ws = openWorkspace({ repo: ctx.flags.repo, cwd: ctx.cwd });
+  } catch {
+    return; // the command reports workspace errors through its normal path
+  }
+  let session;
+  try {
+    ({ session } = requireActor(ws, { agent: explicit }));
+  } catch (error) {
+    if (ctx.flags.agent) throw error;
+    if (error?.code === 'E_NO_SESSION') return; // stale environment identity
+    throw error;
+  }
+  if (process.env.FRIDGE_NO_RENEW === '1') return;
+  try {
+    await withMutex(ws, 'renew', () => {
+      const renewed = renewOwnLeases(ws, session);
+      if (renewed.length) autoRender(ws);
+    });
+  } catch {
+    // Renewal is opportunistic. Identity was validated above; the command
+    // itself still reports corruption or mutex errors through its normal path.
+  }
 }
 
 export async function main(argv = process.argv.slice(2)) {
@@ -153,6 +185,7 @@ export async function main(argv = process.argv.slice(2)) {
     if (process.env.FRIDGE_FAULT && process.env.FRIDGE_TEST !== '1') {
       throw new AppError('E_USAGE', 'FRIDGE_FAULT is only honoured when FRIDGE_TEST=1.');
     }
+    await renewForInvocation(ctx);
     const code = await spec.fn(ctx);
     return code ?? 0;
   } catch (err) {

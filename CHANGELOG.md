@@ -7,7 +7,7 @@ this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Two version numbers matter and they move independently:
 
-- the **CLI version** (`0.2.1`), which is what the tags and the release binaries track, and
+- the **CLI version** (`0.2.2`), which is what the tags and the release binaries track, and
 - the **protocol version** (`wcp/0.1`), which is what `.fridge/` records declare.
 
 A CLI release that does not change the protocol leaves `wcp/0.1` alone.
@@ -16,7 +16,139 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-08-19
+
 ### Fixed
+
+Hardening pass from two independent reviews, tracked in issue #1. Every item
+below is a way exclusive ownership could be lost, and every one now has a
+regression test in both implementations.
+
+- **Overlapping globs could both be granted.** Overlap was decided by
+  intersecting *materialised* file sets, so two patterns that share no file
+  today but could both match a file created tomorrow were judged disjoint.
+  `*.md` and `CHANGELOG.md` were both grantable, as were `a*/x.ts` and
+  `*b/x.ts`. Overlap is now decided on the patterns themselves: the supported
+  glob subset is regular, so "can these both match some string" is decided
+  rather than approximated. Brace expansion is bounded at 256 alternatives and
+  exceeding it is an explicit error, never a silent truncation or an allocated
+  expansion bomb. Inclusive and negated character ranges now participate in the
+  same exact intersection decision, so `[a-z].md` conflicts with `b.md`.
+  Case-insensitive ranges and Unicode simple-fold equivalents now agree across
+  Node and Go, including Kelvin/Angstrom symbols and the two lowercase sigma
+  forms.
+- **Identity could be inherited.** A mutating command with no `FRIDGE_ACTOR`
+  and exactly one actor in the workspace silently ran *as* that actor, so a
+  second terminal shared the first one's claims. Reads may still guess the
+  sole actor; writes now refuse with `E_NO_SESSION` and name the candidate. A
+  stale `FRIDGE_ACTOR` no longer blocks identity-free administration such as
+  `doctor`, `reap --dry-run`, or an unattributed `wait`; an explicit misspelled
+  `--agent` still fails.
+- **A broken lock holder could delete its replacement.** Release removed the
+  lock directory without proving it still owned it, so a holder that had been
+  judged stale and broken would, on exit, delete the *new* holder's lock. Each
+  acquisition now writes a fencing nonce into `owner.json`, and release only
+  removes a lock that still carries its own nonce, checked under the break
+  lock so the answer cannot go stale between reading and acting. Bounded batch
+  operations can also refresh a generation-fenced `heartbeatAt`; migration
+  uses it between note writes so a long live import is never broken merely for
+  exceeding `staleMs`.
+- **Corrupt records failed open.** An unparseable claim was skipped, which made
+  a damaged file look like free space. Reads that feed a mutation or an overlap
+  decision now fail with `E_STATE_CORRUPT`; generated views still render, but
+  name every unreadable record in a warning banner rather than dropping it.
+- **A superseded handoff offer could still be redeemed.** Offering the same card
+  to a second agent left the first offer live in the first agent's inbox, and
+  accepting it stole the card from whoever had legitimately taken it. Offering
+  now withdraws the prior offer, and `accept` validates the envelope against the
+  live claim before moving anything.
+- **Notes were visible at their final path before they were written.** Creation
+  staged into the workspace tmp directory, fsynced, then linked into place, so a
+  reader can never see a zero-length or half-written note.
+- **Path escapes.** `render --output`, `door.extraTargets` and
+  `simulate --report` resolved their targets without checking containment, and
+  pattern normalisation only followed symlinks on the literal prefix. All of
+  them now resolve through a single containment check that judges a path by
+  where it really lands.
+- **Secret scanning missed most durable text.** Only `fridge pin`'s body was
+  scanned. `--task`, `--note`, `--reason` and `--label` land in the same
+  write-once notes and are now scanned too, with `--allow-secret-like` as the
+  documented escape hatch.
+- **Lost updates.** `session` was read before the mutex and written back inside
+  it, and `fridge config` did an unlocked read-modify-write of the whole file.
+  Both now read and write fresh state inside one critical section. Real
+  multi-process races cover concurrent config keys, same-session claim tokens,
+  and heartbeat renewal counters.
+- **Lease renewal did not match its own documentation.**
+  `lease.renewOnAnyCommand` was hand-wired into four commands. Renewal now
+  happens once, centrally, only for explicit `--agent` or `FRIDGE_ACTOR`
+  identity, under the registry mutex. Sole-actor read inference never extends
+  ownership.
+- **`notes.commit: false` did not keep notes out of Git.** The `.gitignore` was
+  a constant that always un-ignored `/notes/`. It is generated from the setting,
+  and `fridge doctor` reports and repairs drift between the two.
+- **The door body and its state stamp could disagree.** Rendering took two
+  snapshots, so a claim arriving between them produced a stamp certifying a body
+  that was never rendered. One snapshot now feeds the body, the stamp and
+  `status.json`.
+- **`fridge run` could not find `npm` on Windows.** Executables are resolved
+  through `PATHEXT` before spawning. `.cmd` and `.bat` targets run through
+  `cmd.exe`; native targets do not. Bare commands search `PATH` without giving
+  a same-named file in the shared checkout priority; explicit relative paths
+  remain supported. A missing command has an explicit diagnostic and exit 127.
+- **`fridge run` could recreate a lease after release.** Shutdown now stops new
+  heartbeats and waits for any heartbeat already in flight before taking down
+  the card.
+- **Configured view paths were trusted too late.** `door.path` now drives the
+  real automatic-render target, every configured target is confined by its
+  symlink-resolved destination, and malformed path or target-array shapes are
+  rejected before a view is written.
+- **Migration could partially publish unsafe input.** Non-dry migration requires
+  explicit identity, source paths stay inside the workspace, all source text is
+  secret-scanned before any write, and note creation plus optional freezing are
+  serialised under the registry mutex. Sources are capped at 10 MiB and re-read
+  after preflight and immediately before freezing; a concurrent edit now causes
+  `E_CONFLICT` instead of being overwritten.
+- **Automatic rendering could claim success without converging.** The body and
+  state stamp come from one snapshot, rendering retries when state changes
+  during publication, and an exhausted retry budget reports failure rather than
+  certifying a stale view.
+- **Breaking a lock, and holding one too long, were silent.** Section 5.2 and
+  5.3 of the protocol require a `lock.broken` and a `lock.slow` note. Both were
+  optional callbacks no caller passed; both are now unconditional.
+- **`revoked` was specified but never written.** Force-releasing somebody else's
+  card archives it as `revoked`; releasing your own still archives as
+  `released`. Superseded offers archive as `withdrawn`.
+
+### Changed
+
+- README now leads with the engineering problem, not the metaphor. Order is
+  hero (`Stop AI coding agents from overwriting each other's work`), the
+  problem, the solution, then the fridge-door story. The repository slug
+  `agent-fridge`, the `fridge` binary, the `.fridge/` state directory and the
+  `wcp/0.1` protocol identifier are unchanged.
+
+- `spec/protocol-v0.1.md` Section 6.3 rewritten to describe the decision
+  procedure the implementations actually run, including the directory-intent
+  expansion and its deliberate over-reporting, the bounded brace expansion, and
+  the narrow subsumption rule for excludes. New Invariant I4b: reads that feed a
+  decision must fail closed on a corrupt record.
+- `vectors/scope-overlap.json` grew from 17 to 51 cases. One existing case
+  changed: `src/api/*.ts` versus `src/api/*.js` was recorded as overlapping,
+  which was an over-approximation the old implementation could not avoid. These
+  two patterns cannot match the same path, and both implementations now agree.
+
+### Documentation
+
+- The README leads with the problem and the solution rather than the metaphor:
+  what breaks when two agents share a checkout, and the five primitives that
+  replace the shared Markdown file. New "What it solves, and what it does not"
+  section states the limits plainly, including that this is not a security
+  boundary, not a merge tool and not distributed.
+- Category line added: **the shared whiteboard for AI coding agents**, with the
+  fridge door kept as the explanatory metaphor rather than the headline.
+
+### Fixed (earlier in this cycle)
 
 - Canonical URLs. `LICENSE` and `NOTICE` still carried the former name and
   pointed at `github.com/RagnarPitla/fridgeboard`, which is not this

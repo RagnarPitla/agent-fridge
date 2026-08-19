@@ -37,7 +37,11 @@ test('vectors: path normalization', () => {
 test('vectors: scope overlap', () => {
   const { cases } = load('scope-overlap.json');
   for (const c of cases) {
-    const got = scopesOverlap({ include: c.a, exclude: [] }, { include: c.b, exclude: [] });
+    const got = scopesOverlap(
+      { include: c.a, exclude: [] },
+      { include: c.b, exclude: [] },
+      { insensitive: Boolean(c.insensitive) },
+    );
     assert.equal(got.overlap, c.overlap, `${c.name}: ${JSON.stringify(c.a)} vs ${JSON.stringify(c.b)}`);
     if (c.reason) assert.equal(got.reason, c.reason, `${c.name}: overlap reason`);
   }

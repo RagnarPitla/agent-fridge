@@ -37,6 +37,20 @@ say CONFORMANT, do not trust the binary.
 
 ## What changed
 
+v0.2.2 is the ownership and concurrency hardening release:
+
+- Exact overlap decisions for ranges, negated classes, bounded braces, and
+  case-insensitive Unicode simple folds in both Node and Go.
+- Explicit mutation identity, strict corrupt-record reads, and stale
+  `FRIDGE_ACTOR` recovery for identity-free administration.
+- Generation-fenced mutex release, recovery, and renewable heartbeats for
+  bounded batch operations.
+- Serialized lease and session mutations, including the `fridge run`
+  heartbeat shutdown race.
+- Confined configured output paths, convergent rendering, and migration
+  preflight that refuses changed, oversized, or secret-like sources.
+- Native Windows batch execution and PATH precedence checks.
+
 See [CHANGELOG.md](https://github.com/RagnarPitla/agent-fridge/blob/main/CHANGELOG.md).
 
 ## Evidence in this release

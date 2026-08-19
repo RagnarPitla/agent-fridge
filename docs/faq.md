@@ -452,10 +452,11 @@ E_NO_SESSION: More than one housemate is on this door (claude, copilot).
 hint: Pass --agent <name>, or export FRIDGE_ACTOR=<name>.
 ```
 
-The resolution order is `--agent` first, then `FRIDGE_ACTOR`, then the sole
-actor if there is exactly one, then exit `7`. Agent Fridge will not guess from a
-pid, a tty, a parent process, or the Git author, because a wrong guess means one
-agent silently holding another agent's claim
+Actor-owned mutations resolve `--agent` first, then `FRIDGE_ACTOR`, then exit
+`7`. Read-only commands that need identity may infer the sole actor, but that
+inference never creates a session or renews a lease. Agent Fridge will not guess
+from a pid, a tty, a parent process, or the Git author, because a wrong guess
+means one agent silently holding another agent's claim
 ([../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#9-actor-and-session-resolution)).
 
 Fix it by exporting the variable once per terminal:

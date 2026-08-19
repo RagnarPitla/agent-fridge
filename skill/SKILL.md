@@ -15,7 +15,7 @@ This skill is vendor-neutral and open. It is published alongside the `fridge`
 CLI and carries no vendor's proprietary format. Any agent runtime that can read
 a Markdown skill file and run a shell command can use it as-is.
 
-- Skill release: `v0.2.1`
+- Skill release: `v0.2.2`
 - Protocol: `wcp/0.1`
 - License: Apache-2.0
 - Homepage: <https://github.com/RagnarPitla/agent-fridge>

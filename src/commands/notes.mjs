@@ -4,25 +4,10 @@
 import { AppError } from '../core/errors.mjs';
 import { emit } from '../core/output.mjs';
 import { openWorkspace, pin as pinNote, readNotes, requireActor } from '../core/store.mjs';
-import { maybeRenew } from '../core/renew.mjs';
 import { autoRender } from '../core/render.mjs';
 import { parseDuration, sleep } from '../core/util.mjs';
+import { guardSecrets, looksSecret } from '../core/secrets.mjs';
 import { BIN } from '../brand.mjs';
-
-const SECRETY = [
-  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'a private key'],
-  [/\bghp_[A-Za-z0-9]{20,}\b/, 'a GitHub token'],
-  [/\bgithub_pat_[A-Za-z0-9_]{20,}\b/, 'a GitHub fine-grained token'],
-  [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS access key id'],
-  [/\bsk-[A-Za-z0-9]{20,}\b/, 'an OpenAI-style key'],
-  [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/, 'a Slack token'],
-  [/\b(password|passwd|secret|api[_-]?key|client[_-]?secret)\s*[=:]\s*\S{8,}/i, 'a credential assignment'],
-];
-
-export function looksSecret(text) {
-  for (const [re, what] of SECRETY) if (re.test(text)) return what;
-  return null;
-}
 
 const readStdin = async () => {
   if (process.stdin.isTTY) return '';
@@ -33,20 +18,14 @@ const readStdin = async () => {
 
 export async function pin(ctx) {
   const ws = openWorkspace({ repo: ctx.flags.repo, cwd: ctx.cwd });
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
-  maybeRenew(ws, session);
+  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   let text = ctx.positional.join(' ').trim();
   if (!text) text = await readStdin();
   if (!text) {
     throw new AppError('E_USAGE', 'A note needs some words.', { hint: `${BIN} pin "rewrote the retry loop in src/api"` });
   }
-  const found = looksSecret(text);
-  if (found && !ctx.flags['allow-secret-like']) {
-    throw new AppError('E_USAGE', `That note looks like it contains ${found}.`, {
-      hint: 'Notes are committed history. Remove it, or pass --allow-secret-like if it is a false positive.',
-    });
-  }
   const kind = ctx.flags.kind || 'note';
+  guardSecrets({ 'That note': text, '--task': ctx.flags.task, '--kind': kind }, { allow: Boolean(ctx.flags['allow-secret-like']) });
   const note = pinNote(ws, {
     type: `note.${kind}`, actor, session,
     subject: ctx.flags.claim ? { kind: 'claim', id: [].concat(ctx.flags.claim)[0] } : null,
@@ -85,3 +64,5 @@ export async function log(ctx) {
     }
   }
 }
+
+export { looksSecret };

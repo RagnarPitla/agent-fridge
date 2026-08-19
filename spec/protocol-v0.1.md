@@ -233,6 +233,13 @@ Defaults, all overridable by `fridge config set`:
 `config.json` is the one shared file that is read-modify-written, so every write
 MUST happen under the registry mutex (Section 5).
 
+`door.path` MUST be a non-empty string. `door.extraTargets` MUST be an array of
+non-empty strings. Every configured target MUST remain inside the workspace
+after resolving existing symlinks; an escaping target is `E_PATH_INVALID`, and
+a malformed value already on disk is `E_STATE_CORRUPT`. `door.path` is the
+primary target used by automatic rendering. `door.extraTargets` are additional
+copies written by an explicit `render`.
+
 ### 3.3 `actors/<slug>.json`
 
 ```json
@@ -495,13 +502,18 @@ targets, including SMB and NFS where `O_EXCL` on files is historically unsafe.
 deadline = now + config.mutex.acquireTimeoutMs
 loop:
   if mkdir(lockdir) succeeds:
-      writeAtomic(lockdir/owner.json, {pid, host, sessionId, op, acquiredAt})
+      nonce = randomToken()
+      writeAtomic(lockdir/owner.json, {
+        pid, host, sessionId, op, acquiredAt, heartbeatAt: acquiredAt, nonce
+      })
       return active
   owner = readJsonSafe(lockdir/owner.json)
   if owner is readable:
-      key = owner.host | owner.pid | owner.acquiredAt
+      key = owner.host | owner.pid | owner.acquiredAt |
+            (owner.heartbeatAt || owner.acquiredAt) | owner.nonce
       if owner.host == thisHost and not processAlive(owner.pid): break it
-      if now - owner.acquiredAt > mutex.staleMs:                 break it
+      activity = owner.heartbeatAt || owner.acquiredAt
+      if now - activity > mutex.staleMs:                         break it
   else:
       # No readable owner. There is a real window in every acquisition
       # between mkdir and the owner write, so this alone proves nothing.
@@ -545,6 +557,13 @@ process broke it. The implementation MUST fail with `E_MUTEX_TIMEOUT` (exit 20)
 and MUST NOT run the critical section, because the section is no longer
 protected.
 
+A bounded batch that can legitimately outlive `mutex.staleMs` MUST refresh
+`heartbeatAt` between bounded mutations. Refresh is itself generation-fenced:
+under `lockdir + ".break"`, re-read `owner.json`, require the same nonce, then
+atomically update `heartbeatAt`. A holder that cannot prove the nonce is still
+its own MUST stop with `E_MUTEX_TIMEOUT`; it MUST NOT continue writing after a
+waiter has replaced it.
+
 ### 5.2 Release
 
 Release SHOULD `rename` the whole lock directory aside and then remove it, so
@@ -553,8 +572,13 @@ deleted. That intermediate state is indistinguishable from a crashed holder.
 Where rename is unavailable, release removes `owner.json` and then the
 directory. Release MUST be registered
 on `SIGINT`, `SIGTERM`, and normal exit, and MUST be idempotent. A release whose
-`owner.json` no longer names this process MUST NOT remove the directory, because
-another process has legitimately broken and re-acquired the lock.
+`owner.json` no longer carries the acquisition's nonce MUST NOT remove the
+directory, because another process has legitimately broken and re-acquired the
+lock. The ownership re-read and removal MUST be serialised with lock breaking,
+so the answer cannot change between the check and the removal.
+
+`doctor --fix` MUST use this same generation-fenced recovery path. It MUST NOT
+delete the mutex directory directly.
 
 **Release MUST retry (I7c).** Every operation a release can use may fail
 transiently for reasons that have nothing to do with the holder. On Windows,
@@ -584,6 +608,10 @@ never guess at the second.
 - The critical section MUST contain only: read the relevant records, decide,
   write, unlock. `config.mutex.maxHoldMs` (default 2000 ms) is a warning
   threshold; exceeding it emits a `lock.slow` note.
+- A bounded batch MAY perform several such writes under one acquisition only
+  when it refreshes the generation-fenced heartbeat between writes. Each
+  individual mutation still has to be bounded; an unbounded user payload is
+  not permission to hold the lock forever.
 - No user command, network call, or interactive prompt may run inside the mutex.
   `fridge run` acquires for the claim, releases, runs the user's command
   unlocked, then re-acquires to release the claim.
@@ -630,42 +658,103 @@ Not supported, and rejected with `E_PATH_INVALID`: extended globs (`+(...)`,
 `!(...)`), regular expressions, and `~` expansion. Rejecting is better than
 guessing.
 
+Character ranges are inclusive Unicode code-point intervals. `[a-z]` therefore
+intersects `b`, `[a-m]` intersects `[h-z]`, and `[a-f]` is disjoint from
+`[x-z]`. `!` or `^` in the first class position negates the union of its
+literals and ranges. Descending ranges, empty classes, and unterminated classes
+are `E_PATH_INVALID`.
+
 ### 6.3 Overlap decision
 
 Two scopes A and B overlap if any include pattern of A can match any path that
-any include pattern of B can match.
+any include pattern of B can match. The decision is made on the **patterns**,
+not on the files that happen to exist. A file created one second after both
+claims were granted is exactly the file two agents will collide on, so a test
+that only compares materialised sets is not a conflict test at all.
+
+The supported glob subset (Section 6.2) is a regular language, so "can these two
+patterns both match some string" is decidable, and the implementation decides it
+rather than approximating it.
 
 ```
 overlap(A, B):
   for pa in A.include, pb in B.include:
+      if excludedBy(A, pb) or excludedBy(B, pa):   continue          # Section 6.3.1
       if isRootGlobal(pa) or isRootGlobal(pb):     return true, "global-pattern"
-      la, lb = literalPrefix(pa), literalPrefix(pb)
-      if la != "" and lb != "" and (isPrefixPath(la, lb) or isPrefixPath(lb, la)):
-          return true, "literal-prefix-nesting"
-  if both A and B materialized without truncation:
-      if setIntersect(A.materialized, B.materialized) != {}:
-          return true, "materialized-intersection"
-      return false
-  if either pattern matches any file in the other's materialized set:
-      return true, "cross-pattern-match"
-  return true, "truncated-scope-fallback"  # cannot prove disjoint
+      if fold(pa) == fold(pb):                     return true, "same-pattern"
+      for qa in {pa, pa + "/**"}, qb in {pb, pb + "/**"}:            # Section 6.3.2
+          if patternsCanIntersect(qa, qb):
+              la, lb = literalPrefix(pa), literalPrefix(pb)
+              if la != "" and lb != "" and (isPrefixPath(la, lb) or isPrefixPath(lb, la)):
+                  return true, "literal-prefix-nesting"
+              return true, "pattern-intersection"
+  if setIntersect(A.materialized, B.materialized) != {}:
+      return true, "materialized-intersection"
+  if A.truncated or B.truncated:  return true, "truncated-scope-fallback"
+  return false
 ```
 
+`patternsCanIntersect(pa, pb)` expands braces on both sides, then runs two
+nested dynamic programs: one over path segments, where `**` matches zero or more
+segments, and one over the characters of a single segment, where `*` matches
+zero or more non-separator characters, `?` matches exactly one, and `[...]`
+matches inclusive ranges or their complement. Two positive classes intersect
+when their ranges overlap. A positive and a negated class intersect when the
+positive class contains a code point outside the negated class's excluded
+ranges. Two negated classes always intersect because the Unicode code-point
+space contains a value excluded by neither finite class.
+
+Brace expansion is depth-first and bounded at 256 completed alternatives per
+pattern. The 257th alternative immediately raises `E_PATH_INVALID`; an
+implementation MUST NOT first allocate the full expansion. Silent truncation
+would under-report overlap, while eager expansion would permit a memory
+exhaustion input.
+
 `literalPrefix` is the portion of a pattern before its first metacharacter, cut
-back to the last `/`.
+back to the last `/`. It is used only to choose between two reason strings; both
+mean the same thing to a caller. Both prefixes must be non-empty, because an
+empty prefix is a prefix of everything and would mislabel every pattern-only
+collision.
+
+#### 6.3.1 Excludes
+
+By default (`config.paths.strictExcludes: false`) an exclude narrows a scope for
+reporting but does not make two otherwise-overlapping scopes disjoint. The one
+exception is exact subsumption: if an exclude on one side **provably covers the
+whole of** the other side's pattern, that pair cannot collide and is skipped.
+
+`patternCovers(outer, inner)` is deliberately a *sufficient*, not complete,
+test. It returns true only when `outer` and `inner` are the same pattern, or
+when `outer` is `X/**` and `inner` is `X` or lies under `X`, with `X` free of
+metacharacters. Anything cleverer risks proving a disjointness that is not
+there, which is the failure this protocol exists to remove.
+
+#### 6.3.2 Directory intent
+
+Every include pattern `p` is also compared as `p/**`. A claim on a path owns
+that path's subtree the moment the path becomes a directory. Without this,
+`a*/x.ts` and `*b` are judged disjoint, and then somebody runs `mkdir ab`.
+
+The cost is over-reporting: `src/**/test/**` and `src/a/b/spec/x.ts` are
+reported as overlapping, because `src/a/b/spec/x.ts/test/y` matches both once
+`x.ts` becomes a directory. Under Invariant I3 an over-report is a refusal to
+work in parallel, which is recoverable. An under-report is two owners, which is
+not.
 
 **Invariant I3 (conservative overlap).** The overlap test MAY report an overlap
 that does not exist. It MUST NEVER miss one. Every uncertain case, including
-truncated materialisation, resolves to "overlap".
+truncated materialisation and a brace expansion that hit its bound, resolves to
+"overlap" or to an explicit error.
 
 **Invariant I4 (no two held claims overlap).** For any two claims in a held
 state (`active` or `handoff-offered`) owned by different sessions, their scopes
 MUST NOT overlap, unless both are `mode: "shared"`.
 
-Excludes narrow a scope for reporting, but by default they do **not** make two
-otherwise-overlapping scopes disjoint (`config.paths.strictExcludes: false`).
-Proving disjointness from excludes is subtle, and quietly getting it wrong
-recreates the bug this protocol exists to remove.
+**Invariant I4b (decisions read strictly).** Any read whose result feeds an
+overlap decision, an ownership check, or any other mutation MUST fail on an
+unparseable record rather than skipping it. A record that cannot be read is not
+evidence that a path is free. Generated views MAY tolerate an unreadable record,
+but MUST name it in their output rather than omit it silently.
 
 ### 6.4 Modes
 
@@ -723,9 +812,13 @@ development and is called out here so reimplementations do not repeat it.
 - `ttlMs` defaults to `config.lease.defaultTtlMs` (15 min), capped at `maxTtlMs`
   (4 h).
 - `fridge heartbeat` renews every lease held by the session.
-- With `config.lease.renewOnAnyCommand`, **any** command from the owning session
-  renews a lease that is past `renewThresholdRatio` (default half) of its TTL.
-  A working agent therefore rarely needs an explicit heartbeat.
+- With `config.lease.renewOnAnyCommand`, any command carrying an explicit
+  identity through `--agent` or `FRIDGE_ACTOR` renews an owned lease that is
+  past `renewThresholdRatio` (default half) of its TTL. Sole-actor inference is
+  read-only and MUST NOT renew leases.
+- Heartbeat, extend, and opportunistic renewal MUST perform their strict claim
+  read and lease rewrite inside the registry mutex. Concurrent renewals add to
+  the current `renewals` value; they do not overwrite one another.
 - A claim is **expired** when `now > lease.expiresAt`.
 - A claim is **stale**, and may be swept, when it is expired and either
   `now > lease.expiresAt + config.lease.graceMs`, or the owner is provably dead
@@ -740,6 +833,11 @@ Sweeping (`reapStale`) happens under the mutex, sets `state: "expired"`, removes
 the lease, writes a `claim.expired` note, and wakes queue waiters. It runs
 opportunistically at the start of every mutating command, so a crashed agent's
 claim is cleaned up by the next participant who needs it, with no daemon.
+
+`fridge run` may renew periodically while its child is running. On shutdown it
+MUST stop scheduling heartbeats, wait for any heartbeat already in flight, and
+only then release the claim. A delayed heartbeat MUST NOT recreate a lease
+after release.
 
 ### 6.7 Release, handoff, revoke
 
@@ -788,9 +886,17 @@ A view is rewritten by whole-file `writeAtomic`, so concurrent renders produce
 one complete version, never an interleaved one, and a lost render is only ever
 one `fridge render` away from correct.
 
+The body and `state:<hash>` MUST come from one snapshot. Automatic rendering
+SHOULD write, re-read the authoritative state key, and retry a small bounded
+number of times when state changed during the write. Exhausting that budget
+MUST report non-convergence to the caller; it MUST NOT certify the stale view as
+current. Because views are derived, failure to converge MUST NOT roll back the
+authoritative mutation.
+
 **Invariant I5b (views are derived eagerly).** Every command that mutates
-records MUST regenerate the configured views before it returns, including the
-commands that fail. A denied `claim` still writes a `claim.denied` note, and
+records MUST regenerate the primary `door.path` view before it returns,
+including commands that fail. Additional `door.extraTargets` are refreshed by
+explicit `render`. A denied `claim` still writes a `claim.denied` note, and
 `join` still writes a session and a `session.started` note, so both MUST render
 even though one of them exits non-zero.
 
@@ -830,12 +936,20 @@ nothing else.
 
 ## 9. Actor and session resolution
 
-Resolution order, with no guessing:
+Explicit resolution order:
 
 1. `--agent <name>`
 2. `FRIDGE_ACTOR`
-3. If the workspace has exactly one actor, that actor
-4. Otherwise `E_NO_SESSION` (exit 7)
+3. Otherwise no explicit identity exists
+
+Every actor-owned mutation and every attributed write MUST have explicit
+identity. If none exists, the command returns `E_NO_SESSION` (exit 7), even when
+the workspace has exactly one actor. Identity-free administrative operations
+such as `init` and reading or changing configuration are outside that rule. A
+read-only command that actually needs identity MAY infer the sole actor, but
+that inference MUST NOT create a session, refresh a session, or renew a lease.
+A supplied name that has not joined is always `E_NO_SESSION`; only `join` may
+create an actor or session.
 
 A conforming implementation MUST NOT infer identity from pid, tty, parent
 process, or Git author. Silently picking an identity is how one agent ends up
@@ -876,6 +990,7 @@ silently upgrade a `0.1` directory in place.
 | I2 | Notes are write-once and never modified |
 | I3 | Overlap detection may over-report, never under-report |
 | I4 | No two held claims from different sessions overlap, unless both are shared |
+| I4b | Reads that feed ownership or mutation decisions fail closed on corrupt records |
 | I5 | Generated views are derived; deleting them loses nothing |
 | I5b | Every mutating command regenerates views before returning, including on failure |
 | I6 | Exactly one process may hold the registry mutex at a time |
@@ -916,7 +1031,11 @@ Claim patterns are data, never shell input. A conforming implementation MUST NOT
 pass user paths to a shell, MUST reject traversal and root escape
 (`E_PATH_INVALID`), MUST refuse to claim `.git/**` or `.fridge/**`, and MUST
 perform the symlink containment check of Section 6.1 step 5. `fridge run`
-executes with `shell: false` and an argv array.
+executes native programs directly with an argv array. On Windows it resolves
+bare and extensionless commands through `PATHEXT`; `.cmd` and `.bat` targets are
+the required exception and run through `cmd.exe` with each argument quoted.
+A command that cannot be resolved returns shell-compatible exit 127 with an
+explicit diagnostic.
 
 ### 12.4 What is recorded
 

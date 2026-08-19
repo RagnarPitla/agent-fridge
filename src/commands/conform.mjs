@@ -46,7 +46,11 @@ const RUNNERS = {
   },
 
   'scope-overlap': (c) => {
-    const got = scopesOverlap({ include: c.a, exclude: [] }, { include: c.b, exclude: [] });
+    const got = scopesOverlap(
+      { include: c.a, exclude: [] },
+      { include: c.b, exclude: [] },
+      { insensitive: Boolean(c.insensitive) },
+    );
     if (got.overlap !== c.overlap) return `expected overlap=${c.overlap}, got ${got.overlap}`;
     if (c.reason && got.reason !== c.reason) return `expected reason ${c.reason}, got ${got.reason}`;
     return null;

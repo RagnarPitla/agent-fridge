@@ -18,11 +18,15 @@ test('the top README CTA links to Pages and a real quickstart anchor', () => {
   const markdown = readme();
   const hero = markdown.indexOf('docs/assets/agent-fridge-hero.svg');
   const heroEnd = markdown.indexOf('</p>', hero);
-  const prose = markdown.indexOf('## Stop AI coding agents from overwriting each other');
+  // The first prose heading below the fold. The point of the assertion is that
+  // the CTA sits between the hero and the long-form explanation, whatever that
+  // explanation is currently called.
+  const prose = markdown.indexOf('\n## The problem');
   const pagesLink = markdown.indexOf(`href="${PAGES_URL}"`);
   const quickstartLink = markdown.indexOf('href="#60-second-quick-start"');
 
   assert.ok(hero >= 0 && heroEnd > hero, 'README hero markup is missing');
+  assert.ok(prose > 0, 'README has no leading prose section to place the CTA above');
   assert.ok(
     pagesLink > heroEnd && pagesLink < prose,
     'live-site CTA must appear directly below the hero and before the long prose',

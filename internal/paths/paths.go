@@ -7,6 +7,7 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -32,6 +33,7 @@ var (
 var reservedRoots = []string{".fridge", ".git"}
 
 const isWindows = runtime.GOOS == "windows"
+const maxBraceExpansions = 256
 
 // CaseFold lowercases only when the workspace is configured case-insensitive.
 func CaseFold(s string, insensitive bool) string {
@@ -81,56 +83,62 @@ func IsPrefixPath(a, b string) bool {
 }
 
 // ExpandBraces turns {a,b} alternation into concrete patterns before matching.
-// Nesting is allowed; an unterminated brace is refused rather than guessed.
+// Nesting is allowed, but output is bounded while it is generated so a brace
+// bomb never allocates its full exponential expansion before being refused.
 func ExpandBraces(pattern string) ([]string, error) {
-	open := strings.IndexByte(pattern, '{')
-	if open == -1 {
-		return []string{pattern}, nil
-	}
-	depth := 0
-	close := -1
-	for i := open; i < len(pattern); i++ {
-		if pattern[i] == '{' {
-			depth++
-		} else if pattern[i] == '}' {
-			depth--
-			if depth == 0 {
-				close = i
-				break
+	out := []string{}
+	var visit func(string) error
+	visit = func(value string) error {
+		open := strings.IndexByte(value, '{')
+		if open == -1 {
+			if len(out) >= maxBraceExpansions {
+				return errs.New("E_PATH_INVALID",
+					fmt.Sprintf("Pattern expands to more than %d alternatives: %s", maxBraceExpansions, pattern)).
+					WithHint("Split it into separate claims.")
+			}
+			out = append(out, value)
+			return nil
+		}
+		depth := 0
+		close := -1
+		for i := open; i < len(value); i++ {
+			if value[i] == '{' {
+				depth++
+			} else if value[i] == '}' {
+				depth--
+				if depth == 0 {
+					close = i
+					break
+				}
 			}
 		}
+		if close == -1 {
+			return errs.New("E_PATH_INVALID", "Unterminated brace in pattern: "+pattern)
+		}
+		head := value[:open]
+		tail := value[close+1:]
+		body := value[open+1 : close]
+		nested := 0
+		start := 0
+		for i, ch := range body {
+			switch ch {
+			case '{':
+				nested++
+			case '}':
+				nested--
+			case ',':
+				if nested == 0 {
+					if err := visit(head + body[start:i] + tail); err != nil {
+						return err
+					}
+					start = i + 1
+				}
+			}
+		}
+		return visit(head + body[start:] + tail)
 	}
-	if close == -1 {
-		return nil, errs.New("E_PATH_INVALID", "Unterminated brace in pattern: "+pattern)
-	}
-	head := pattern[:open]
-	tail := pattern[close+1:]
-	body := pattern[open+1 : close]
-	parts := []string{}
-	depth2 := 0
-	cur := strings.Builder{}
-	for _, ch := range body {
-		if ch == '{' {
-			depth2++
-		}
-		if ch == '}' {
-			depth2--
-		}
-		if ch == ',' && depth2 == 0 {
-			parts = append(parts, cur.String())
-			cur.Reset()
-		} else {
-			cur.WriteRune(ch)
-		}
-	}
-	parts = append(parts, cur.String())
-	out := []string{}
-	for _, p := range parts {
-		sub, err := ExpandBraces(head + p + tail)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, sub...)
+	if err := visit(pattern); err != nil {
+		return nil, err
 	}
 	return out, nil
 }
@@ -566,25 +574,53 @@ type Overlap struct {
 	Paths   []string
 }
 
-// ScopesOverlap is the conservative overlap test of section 6.3. Every
-// uncertain case, including truncated materialisation, resolves to "overlap".
+// ScopesOverlap is the conservative overlap test of section 6.3. Overlap is
+// decided on the patterns themselves, so a pair that can only collide on a file
+// that does not exist yet is still refused. Materialization is consulted only
+// to name the concrete files in the error.
 func ScopesOverlap(a, b Scope, insensitive bool) (Overlap, error) {
 	fold := func(s string) string { return CaseFold(s, insensitive) }
-	for _, pa := range a.Include {
-		for _, pb := range b.Include {
-			if IsRootGlobal(pa) || IsRootGlobal(pb) {
-				return Overlap{true, "global-pattern", []string{pa, pb}}, nil
+	excludedBy := func(scope Scope, pattern string) (bool, error) {
+		for _, e := range scope.Exclude {
+			ok, err := PatternCovers(e, pattern, insensitive)
+			if err != nil {
+				return false, err
 			}
-			la := fold(LiteralPrefix(pa))
-			lb := fold(LiteralPrefix(pb))
-			// Empty prefixes are handled by materialization below; treating them
-			// as nesting here would flag `*.md` against `src/**`, which cannot
-			// collide.
-			if la != "" && lb != "" && (IsPrefixPath(la, lb) || IsPrefixPath(lb, la)) {
-				return Overlap{true, "literal-prefix-nesting", []string{pa, pb}}, nil
+			if ok {
+				return true, nil
 			}
 		}
+		return false, nil
 	}
+	skip := func(pa, pb string) (bool, error) {
+		// An exclude only rules a pair out when it swallows the other side
+		// whole. Anything less and some path could still satisfy both.
+		ea, err := excludedBy(a, pb)
+		if err != nil {
+			return false, err
+		}
+		if ea {
+			return true, nil
+		}
+		return excludedBy(b, pa)
+	}
+
+	for _, pa := range a.Include {
+		for _, pb := range b.Include {
+			if !IsRootGlobal(pa) && !IsRootGlobal(pb) {
+				continue
+			}
+			drop, err := skip(pa, pb)
+			if err != nil {
+				return Overlap{}, err
+			}
+			if drop {
+				continue
+			}
+			return Overlap{true, "global-pattern", []string{pa, pb}}, nil
+		}
+	}
+
 	setB := map[string]bool{}
 	for _, f := range b.Materialized {
 		setB[fold(f)] = true
@@ -595,50 +631,37 @@ func ScopesOverlap(a, b Scope, insensitive bool) (Overlap, error) {
 			hits = append(hits, f)
 		}
 	}
-	if len(hits) > 0 {
-		return Overlap{true, "materialized-intersection", capPaths(hits)}, nil
-	}
-	bMatchers := b.Matchers
-	if len(bMatchers) == 0 {
-		bMatchers = b.Include
-	}
-	bCompiled, err := CompileMatchers(bMatchers, insensitive)
-	if err != nil {
-		return Overlap{}, err
-	}
-	crossA := []string{}
-	for _, f := range a.Materialized {
-		if bCompiled.Match(f) {
-			crossA = append(crossA, f)
-		}
-	}
-	if len(crossA) > 0 {
-		return Overlap{true, "cross-pattern-match", capPaths(crossA)}, nil
-	}
-	aMatchers := a.Matchers
-	if len(aMatchers) == 0 {
-		aMatchers = a.Include
-	}
-	aCompiled, err := CompileMatchers(aMatchers, insensitive)
-	if err != nil {
-		return Overlap{}, err
-	}
-	crossB := []string{}
-	for _, f := range b.Materialized {
-		if aCompiled.Match(f) {
-			crossB = append(crossB, f)
-		}
-	}
-	if len(crossB) > 0 {
-		return Overlap{true, "cross-pattern-match", capPaths(crossB)}, nil
-	}
-	if a.Truncated || b.Truncated {
-		for _, pa := range a.Include {
-			for _, pb := range b.Include {
-				la := fold(LiteralPrefix(pa))
-				lb := fold(LiteralPrefix(pb))
-				if IsPrefixPath(la, lb) || IsPrefixPath(lb, la) {
-					return Overlap{true, "truncated-scope-fallback", []string{pa, pb}}, nil
+
+	for _, pa := range a.Include {
+		for _, pb := range b.Include {
+			drop, err := skip(pa, pb)
+			if err != nil {
+				return Overlap{}, err
+			}
+			if drop {
+				continue
+			}
+			for _, wa := range withSubtree(pa) {
+				for _, wb := range withSubtree(pb) {
+					can, err := PatternsCanIntersect(wa, wb, insensitive)
+					if err != nil {
+						return Overlap{}, err
+					}
+					if !can {
+						continue
+					}
+					if len(hits) > 0 {
+						return Overlap{true, "materialized-intersection", capPaths(hits)}, nil
+					}
+					if fold(pa) == fold(pb) {
+						return Overlap{true, "same-pattern", []string{pa}}, nil
+					}
+					la := fold(LiteralPrefix(pa))
+					lb := fold(LiteralPrefix(pb))
+					if la != "" && lb != "" && (IsPrefixPath(la, lb) || IsPrefixPath(lb, la)) {
+						return Overlap{true, "literal-prefix-nesting", []string{pa, pb}}, nil
+					}
+					return Overlap{true, "pattern-intersection", []string{pa, pb}}, nil
 				}
 			}
 		}

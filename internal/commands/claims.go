@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/output"
 	"github.com/RagnarPitla/agent-fridge/internal/paths"
 	"github.com/RagnarPitla/agent-fridge/internal/render"
+	"github.com/RagnarPitla/agent-fridge/internal/secrets"
 	"github.com/RagnarPitla/agent-fridge/internal/store"
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
@@ -93,6 +96,7 @@ func buildScope(ws *store.Workspace, include, exclude []string) (jsonx.Obj, erro
 func scopeFrom(o jsonx.Obj) paths.Scope {
 	return paths.Scope{
 		Include:      o.Strings("include"),
+		Exclude:      o.Strings("exclude"),
 		Materialized: o.Strings("materialized"),
 		Truncated:    o.Bool("materializedTruncated"),
 		Matchers:     o.Strings("matchers"),
@@ -164,8 +168,13 @@ func cmdClaim(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	actor, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
+		return 0, err
+	}
+	if err := secrets.Guard(map[string]string{
+		"--task": ctx.Flags.Str("task"), "--label": strings.Join(ctx.Flags.List("label"), " "),
+	}, ctx.Flags.Bool("allow-secret-like")); err != nil {
 		return 0, err
 	}
 	if len(ctx.Positional) == 0 {
@@ -236,7 +245,11 @@ func cmdClaim(ctx *Ctx) (int, error) {
 			}
 			mineScope := scopeFrom(scope)
 			existing := []store.Decorated{}
-			for _, d := range store.ListClaims(ws, true) {
+			all, e := store.ListClaimsStrict(ws, true)
+			if e != nil {
+				return e
+			}
+			for _, d := range all {
 				if !d.Stale && store.IsHeld(d.Claim) {
 					existing = append(existing, d)
 				}
@@ -349,13 +362,14 @@ func cmdClaim(ctx *Ctx) (int, error) {
 			if _, e := store.WriteLease(ws, record.Str("id"), session.Str("id"), ttlMs, 0); e != nil {
 				return e
 			}
-			tokens := session.ObjAt("tokens")
-			if tokens == nil {
-				tokens = jsonx.Obj{}
-			}
-			tokens[record.Str("id")] = token
-			session["tokens"] = tokens
-			if e := store.WriteSession(ws, session); e != nil {
+			if e := store.MutateSession(ws, session, func(fresh jsonx.Obj) {
+				tokens := fresh.ObjAt("tokens")
+				if tokens == nil {
+					tokens = jsonx.Obj{}
+				}
+				tokens[record.Str("id")] = token
+				fresh["tokens"] = tokens
+			}); e != nil {
 				return e
 			}
 			suffix := ""
@@ -503,7 +517,11 @@ func cmdClaim(ctx *Ctx) (int, error) {
 func classify(ws *store.Workspace, session jsonx.Obj, queries []string) (jsonx.Arr, error) {
 	insensitive := paths.DefaultCaseInsensitive(ws.Config.Str("paths.caseSensitivity"))
 	active := []store.Decorated{}
-	for _, d := range store.ListClaims(ws, true) {
+	all, err := store.ListClaimsStrict(ws, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range all {
 		if !d.Stale && store.IsHeld(d.Claim) {
 			active = append(active, d)
 		}
@@ -612,9 +630,6 @@ func cmdCheck(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	if _, err := maybeRenew(ws, session); err != nil {
-		return 0, err
-	}
 	if len(ctx.Positional) == 0 {
 		return 0, errs.New("E_USAGE", "Which paths?").WithHint(brand.Bin + " check src/api/routes.ts")
 	}
@@ -636,9 +651,6 @@ func cmdGuard(ctx *Ctx) (int, error) {
 	}
 	_, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
-		return 0, err
-	}
-	if _, err := maybeRenew(ws, session); err != nil {
 		return 0, err
 	}
 	inputs := ctx.Positional
@@ -675,61 +687,11 @@ func cmdHeartbeat(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	_, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	_, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
 		return 0, err
 	}
 	ids := ctx.Flags.List("claim")
-	mine := []store.Decorated{}
-	for _, d := range store.ListClaims(ws, true) {
-		if d.Claim.Str("sessionId") == session.Str("id") {
-			mine = append(mine, d)
-		}
-	}
-	targets := mine
-	if len(ids) > 0 {
-		targets = nil
-		for _, d := range mine {
-			for _, id := range ids {
-				if d.Claim.Str("id") == id {
-					targets = append(targets, d)
-					break
-				}
-			}
-		}
-		if len(targets) != len(ids) {
-			missing := []string{}
-			for _, id := range ids {
-				found := false
-				for _, d := range targets {
-					if d.Claim.Str("id") == id {
-						found = true
-					}
-				}
-				if !found {
-					missing = append(missing, id)
-				}
-			}
-			return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("No live card of yours named %s.", strings.Join(missing, ", "))).
-				WithHint(brand.Bin + " whoami")
-		}
-	}
-	if len(targets) == 0 {
-		return ctx.emit("heartbeat", output.Result{
-			Data: jsonx.Obj{"renewed": jsonx.Arr{}}, Text: "you are not holding any cards",
-		})
-	}
-	expired := []string{}
-	for _, d := range targets {
-		if d.Stale {
-			expired = append(expired, d.Claim.Str("id"))
-		}
-	}
-	if len(expired) > 0 {
-		return 0, errs.New("E_LEASE_EXPIRED", fmt.Sprintf("%d of your card(s) already fell off the door.", len(expired))).
-			WithHint(fmt.Sprintf("%s reap && %s claim ... again", brand.Bin, brand.Bin)).
-			WithDetails(jsonx.Obj{"claims": strArr(expired)})
-	}
 	var ttlOverride int64
 	if t := ctx.Flags.Str("ttl"); t != "" {
 		ttlOverride, err = util.ParseDuration(t, "ttl")
@@ -740,22 +702,82 @@ func cmdHeartbeat(ctx *Ctx) (int, error) {
 	maxTTL := int64(ws.Config.Num("lease.maxTtlMs"))
 	renewed := jsonx.Arr{}
 	lines := []string{}
-	for _, d := range targets {
-		ttl := ttlOverride
-		if ttl == 0 {
-			ttl = int64(d.Claim.Num("ttlMs"))
-		}
-		if ttl > maxTTL {
-			ttl = maxTTL
-		}
-		lease, err := store.WriteLease(ws, d.Claim.Str("id"), session.Str("id"), ttl, int(d.Lease.Num("renewals"))+1)
+	err = mutex.With(ws, "heartbeat", func() error {
+		all, err := store.ListClaimsStrict(ws, true)
 		if err != nil {
-			return 0, err
+			return err
 		}
-		renewed = append(renewed, jsonx.Obj{"claimId": d.Claim.Str("id"), "expiresAt": lease.Str("expiresAt")})
-		lines = append(lines, fmt.Sprintf("  %s  until %s", d.Claim.Str("id"), lease.Str("expiresAt")))
+		mine := []store.Decorated{}
+		for _, d := range all {
+			if d.Claim.Str("sessionId") == session.Str("id") {
+				mine = append(mine, d)
+			}
+		}
+		targets := mine
+		if len(ids) > 0 {
+			targets = nil
+			for _, d := range mine {
+				for _, id := range ids {
+					if d.Claim.Str("id") == id {
+						targets = append(targets, d)
+						break
+					}
+				}
+			}
+			if len(targets) != len(ids) {
+				missing := []string{}
+				for _, id := range ids {
+					found := false
+					for _, d := range targets {
+						if d.Claim.Str("id") == id {
+							found = true
+						}
+					}
+					if !found {
+						missing = append(missing, id)
+					}
+				}
+				return errs.New("E_NOT_FOUND", fmt.Sprintf("No live card of yours named %s.", strings.Join(missing, ", "))).
+					WithHint(brand.Bin + " whoami")
+			}
+		}
+		expired := []string{}
+		for _, d := range targets {
+			if d.Stale {
+				expired = append(expired, d.Claim.Str("id"))
+			}
+		}
+		if len(expired) > 0 {
+			return errs.New("E_LEASE_EXPIRED", fmt.Sprintf("%d of your card(s) already fell off the door.", len(expired))).
+				WithHint(fmt.Sprintf("%s reap && %s claim ... again", brand.Bin, brand.Bin)).
+				WithDetails(jsonx.Obj{"claims": strArr(expired)})
+		}
+		for _, d := range targets {
+			ttl := ttlOverride
+			if ttl == 0 {
+				ttl = int64(d.Claim.Num("ttlMs"))
+			}
+			if ttl > maxTTL {
+				ttl = maxTTL
+			}
+			lease, err := store.WriteLease(ws, d.Claim.Str("id"), session.Str("id"), ttl, int(d.Lease.Num("renewals"))+1)
+			if err != nil {
+				return err
+			}
+			renewed = append(renewed, jsonx.Obj{"claimId": d.Claim.Str("id"), "expiresAt": lease.Str("expiresAt")})
+			lines = append(lines, fmt.Sprintf("  %s  until %s", d.Claim.Str("id"), lease.Str("expiresAt")))
+		}
+		return nil
+	}, nil)
+	if err != nil {
+		return 0, err
 	}
 	render.Auto(ws)
+	if len(renewed) == 0 {
+		return ctx.emit("heartbeat", output.Result{
+			Data: jsonx.Obj{"renewed": jsonx.Arr{}}, Text: "you are not holding any cards",
+		})
+	}
 	return ctx.emit("heartbeat", output.Result{
 		Data: jsonx.Obj{"renewed": renewed},
 		Text: fmt.Sprintf("still on it: renewed %d card(s)\n%s", len(renewed), strings.Join(lines, "\n")),
@@ -767,7 +789,7 @@ func cmdExtend(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	_, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	_, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
 		return 0, err
 	}
@@ -778,14 +800,6 @@ func cmdExtend(ctx *Ctx) (int, error) {
 	if ctx.Flags.Str("ttl") == "" {
 		return 0, errs.New("E_USAGE", "--ttl is required.").WithHint(fmt.Sprintf("%s extend %s --ttl 1h", brand.Bin, id))
 	}
-	d := store.ReadClaim(ws, id)
-	if d == nil {
-		return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s.", id)).WithHint(brand.Bin + " board")
-	}
-	if d.Claim.Str("sessionId") != session.Str("id") {
-		return 0, errs.New("E_NOT_OWNER", fmt.Sprintf("Card %s belongs to %s.", id, d.Claim.Str("actorName"))).
-			WithHint(fmt.Sprintf("%s handoff %s --to <you>", brand.Bin, id))
-	}
 	ttlMs, err := util.ParseDuration(ctx.Flags.Str("ttl"), "ttl")
 	if err != nil {
 		return 0, err
@@ -793,10 +807,25 @@ func cmdExtend(ctx *Ctx) (int, error) {
 	if maxTTL := int64(ws.Config.Num("lease.maxTtlMs")); ttlMs > maxTTL {
 		ttlMs = maxTTL
 	}
-	if err := store.SaveClaim(ws, d.Claim.With(jsonx.Obj{"ttlMs": float64(ttlMs), "updatedAt": util.Now()})); err != nil {
-		return 0, err
-	}
-	lease, err := store.WriteLease(ws, id, session.Str("id"), ttlMs, int(d.Lease.Num("renewals"))+1)
+	var lease jsonx.Obj
+	err = mutex.With(ws, "extend", func() error {
+		d, err := store.ReadClaim(ws, id)
+		if err != nil {
+			return err
+		}
+		if d == nil {
+			return errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s.", id)).WithHint(brand.Bin + " board")
+		}
+		if d.Claim.Str("sessionId") != session.Str("id") {
+			return errs.New("E_NOT_OWNER", fmt.Sprintf("Card %s belongs to %s.", id, d.Claim.Str("actorName"))).
+				WithHint(fmt.Sprintf("%s handoff %s --to <you>", brand.Bin, id))
+		}
+		if err := store.SaveClaim(ws, d.Claim.With(jsonx.Obj{"ttlMs": float64(ttlMs), "updatedAt": util.Now()})); err != nil {
+			return err
+		}
+		lease, err = store.WriteLease(ws, id, session.Str("id"), ttlMs, int(d.Lease.Num("renewals"))+1)
+		return err
+	}, nil)
 	if err != nil {
 		return 0, err
 	}
@@ -812,8 +841,12 @@ func cmdRelease(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
+	actor, session, err := store.RequireActorMutating(ws, ctx.Flags.Str("agent"), ctx.Flags.Str("vendor"))
 	if err != nil {
+		return 0, err
+	}
+	if err := secrets.Guard(map[string]string{"--note": ctx.Flags.Str("note")},
+		ctx.Flags.Bool("allow-secret-like")); err != nil {
 		return 0, err
 	}
 	all := ctx.Flags.Bool("all")
@@ -834,8 +867,19 @@ func cmdRelease(ctx *Ctx) (int, error) {
 	lines := []string{}
 	var inner error
 	err = mutex.With(ws, "release", func() error {
+		freshSession := store.ReadSession(ws, session.Str("id"))
+		if freshSession == nil {
+			return errs.New("E_NO_SESSION", fmt.Sprintf("%s has no current session on this door.", actor.Str("name"))).
+				WithHint(fmt.Sprintf("fridge join --agent %s --vendor %s", actor.Str("name"), actor.Str("vendor")))
+		}
+		session = freshSession
+		ws.Session = freshSession
 		mine := []store.Decorated{}
-		for _, d := range store.ListClaims(ws, true) {
+		claims, err := store.ListClaimsStrict(ws, true)
+		if err != nil {
+			return err
+		}
+		for _, d := range claims {
 			if d.Claim.Str("sessionId") == session.Str("id") {
 				mine = append(mine, d)
 			}
@@ -844,7 +888,10 @@ func cmdRelease(ctx *Ctx) (int, error) {
 		if !all {
 			targets = nil
 			for _, id := range ids {
-				d := store.ReadClaim(ws, id)
+				d, e := store.ReadClaim(ws, id)
+				if e != nil {
+					return e
+				}
 				if d == nil {
 					inner = errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s.", id)).WithHint(brand.Bin + " board")
 					return nil
@@ -874,11 +921,15 @@ func cmdRelease(ctx *Ctx) (int, error) {
 			}
 		}
 		for _, d := range targets {
-			if _, e := store.ArchiveClaim(ws, d.Claim, "released"); e != nil {
-				return e
+			// The wire format distinguishes a card its owner took down from
+			// one an operator took away. Forcing somebody else's card is
+			// `revoked`.
+			finalState := "released"
+			if ctx.Flags.Bool("force") && d.Claim.Str("sessionId") != session.Str("id") {
+				finalState = "revoked"
 			}
-			if tokens := session.ObjAt("tokens"); tokens != nil {
-				delete(tokens, d.Claim.Str("id"))
+			if _, e := store.ArchiveClaim(ws, d.Claim, finalState); e != nil {
+				return e
 			}
 			noteSuffix := ""
 			if n := ctx.Flags.Str("note"); n != "" {
@@ -904,7 +955,14 @@ func cmdRelease(ctx *Ctx) (int, error) {
 			})
 			lines = append(lines, fmt.Sprintf("  %s  %s", d.Claim.Str("id"), strings.Join(d.Claim.Strings("scope.include"), ", ")))
 		}
-		return store.WriteSession(ws, session)
+		return store.MutateSession(ws, session, func(fresh jsonx.Obj) {
+			tokens := fresh.ObjAt("tokens")
+			for _, d := range targets {
+				if tokens != nil {
+					delete(tokens, d.Claim.Str("id"))
+				}
+			}
+		})
 	}, nil)
 	if err != nil {
 		return 0, err
@@ -928,21 +986,39 @@ func cmdReap(ctx *Ctx) (int, error) {
 		return 0, err
 	}
 	var actor, session jsonx.Obj
-	if a, s, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ""); err == nil {
-		actor, session = a, s
+	explicit := ctx.Flags.Str("agent")
+	candidate := explicit
+	if candidate == "" {
+		candidate = os.Getenv("FRIDGE_ACTOR")
+	}
+	if candidate != "" {
+		actor, session, err = store.RequireActorMutating(ws, candidate, "")
+		if err != nil {
+			if explicit != "" || errs.As(err) == nil || errs.As(err).Code != "E_NO_SESSION" {
+				return 0, err
+			}
+			actor, session, err = nil, nil, nil
+		}
 	}
 	force := ctx.Flags.Bool("force")
-	targets := func() []store.Decorated {
+	targets := func() ([]store.Decorated, error) {
+		all, err := store.ListClaimsStrict(ws, true)
+		if err != nil {
+			return nil, err
+		}
 		out := []store.Decorated{}
-		for _, d := range store.ListClaims(ws, true) {
+		for _, d := range all {
 			if d.Stale || (force && d.Expired) {
 				out = append(out, d)
 			}
 		}
-		return out
+		return out, nil
 	}
 	if ctx.Flags.Bool("dry-run") {
-		stale := targets()
+		stale, err := targets()
+		if err != nil {
+			return 0, err
+		}
 		rows := jsonx.Arr{}
 		lines := []string{}
 		for _, d := range stale {
@@ -961,7 +1037,11 @@ func cmdReap(ctx *Ctx) (int, error) {
 	}
 	if force && !ctx.Flags.Bool("allow-multihost") {
 		foreign := []string{}
-		for _, d := range targets() {
+		current, err := targets()
+		if err != nil {
+			return 0, err
+		}
+		for _, d := range current {
 			if d.Claim.Str("host") != util.HostID() {
 				foreign = append(foreign, d.Claim.Str("id"))
 			}
@@ -1015,18 +1095,34 @@ func cmdWait(ctx *Ctx) (int, error) {
 		return 0, err
 	}
 	started := util.NowMs()
-	initial := store.ReadClaim(ws, id)
+	initial, err := store.ReadClaim(ws, id)
+	if err != nil {
+		return 0, err
+	}
 	if initial == nil {
 		return 0, errs.New("E_NOT_FOUND", fmt.Sprintf("No card %s. It may already be gone.", id)).
 			WithHint(brand.Bin + " board")
 	}
 	// Put a marker on the waiting list so the board can show who is blocked.
 	entryID := ""
-	if actor, session, err := store.RequireActor(ws, ctx.Flags.Str("agent"), ""); err == nil {
-		if entry, err := store.WriteQueueEntry(ws, jsonx.Obj{
-			"id": util.NewID("que"), "claimId": id, "actorName": actor.Str("name"),
-			"sessionId": session.Str("id"), "include": strArr(initial.Claim.Strings("scope.include")), "task": nil,
-		}); err == nil {
+	explicit := ctx.Flags.Str("agent")
+	candidate := explicit
+	if candidate == "" {
+		candidate = os.Getenv("FRIDGE_ACTOR")
+	}
+	if candidate != "" {
+		actor, session, actorErr := store.RequireActorMutating(ws, candidate, "")
+		if actorErr != nil && (explicit != "" || errs.As(actorErr) == nil || errs.As(actorErr).Code != "E_NO_SESSION") {
+			return 0, actorErr
+		}
+		if actorErr == nil {
+			entry, writeErr := store.WriteQueueEntry(ws, jsonx.Obj{
+				"id": util.NewID("que"), "claimId": id, "actorName": actor.Str("name"),
+				"sessionId": session.Str("id"), "include": strArr(initial.Claim.Strings("scope.include")), "task": nil,
+			})
+			if writeErr != nil {
+				return 0, writeErr
+			}
 			entryID = entry.Str("id")
 		}
 	}
@@ -1036,7 +1132,10 @@ func cmdWait(ctx *Ctx) (int, error) {
 		}
 	}()
 	for {
-		d := store.ReadClaim(ws, id)
+		d, err := store.ReadClaim(ws, id)
+		if err != nil {
+			return 0, err
+		}
 		if d == nil || d.Stale {
 			waited := util.NowMs() - started
 			return ctx.emit("wait", output.Result{
@@ -1106,22 +1205,49 @@ func cmdRun(ctx *Ctx) (int, error) {
 		beat = 1000
 	}
 	stop := make(chan struct{})
+	heartbeatDone := make(chan error, 1)
 	go func() {
 		ticker := time.NewTicker(time.Duration(beat) * time.Millisecond)
 		defer ticker.Stop()
+		var heartbeatErr error
+		defer func() { heartbeatDone <- heartbeatErr }()
 		for {
 			select {
 			case <-ticker.C:
+				if heartbeatErr != nil {
+					continue
+				}
 				ws2, err := open(ctx)
 				if err != nil {
+					heartbeatErr = err
 					continue
 				}
-				_, session, err := store.RequireActor(ws2, ctx.Flags.Str("agent"), "")
+				_, session, err := store.RequireActorMutating(ws2, ctx.Flags.Str("agent"), "")
 				if err != nil {
+					heartbeatErr = err
 					continue
 				}
-				// The child matters more than the heartbeat.
-				_, _ = store.WriteLease(ws2, claimID, session.Str("id"), ttlMs, 0)
+				heartbeatErr = mutex.With(ws2, "run-heartbeat", func() error {
+					current, err := store.ReadClaim(ws2, claimID)
+					if err != nil {
+						return err
+					}
+					if current == nil {
+						return errs.New("E_NOT_FOUND", fmt.Sprintf("Card %s disappeared while '%s' was running.", claimID, ctx.Rest[0]))
+					}
+					if os.Getenv("FRIDGE_TEST") == "1" && os.Getenv("FRIDGE_FAULT") == "delay-run-heartbeat" {
+						_ = os.WriteFile(filepath.Join(ws2.Paths.Tmp, "run-heartbeat-entered"), []byte("entered\n"), 0o644)
+						time.Sleep(800 * time.Millisecond)
+						select {
+						case <-stop:
+							return nil
+						default:
+						}
+					}
+					_, err = store.WriteLease(ws2, claimID, session.Str("id"), ttlMs,
+						int(current.Lease.Num("renewals"))+1)
+					return err
+				}, nil)
 			case <-stop:
 				return
 			}
@@ -1129,7 +1255,24 @@ func cmdRun(ctx *Ctx) (int, error) {
 	}()
 
 	code := 0
-	child := exec.Command(ctx.Rest[0], ctx.Rest[1:]...)
+	// Resolve before spawning so a command that never started can say so.
+	// On Windows npm is npm.cmd, and LookPath is what consults PATHEXT; a
+	// bare 127 with no explanation is the worst possible answer here.
+	target, batch := resolveRunTarget(ctx.Rest[0], ctx.Cwd)
+	var child *exec.Cmd
+	if batch {
+		comspec := os.Getenv("ComSpec")
+		if comspec == "" {
+			comspec = "cmd.exe"
+		}
+		parts := []string{winCmdQuote(target)}
+		for _, arg := range ctx.Rest[1:] {
+			parts = append(parts, winCmdQuote(arg))
+		}
+		child = exec.Command(comspec, "/d", "/s", "/c", strings.Join(parts, " "))
+	} else {
+		child = exec.Command(target, ctx.Rest[1:]...)
+	}
 	child.Dir = ctx.Cwd
 	child.Stdin = os.Stdin
 	child.Stdout = os.Stdout
@@ -1140,13 +1283,29 @@ func cmdRun(ctx *Ctx) (int, error) {
 			if code < 0 {
 				code = 128 + signalNumber(ee)
 			}
-		} else if isNotFound(err) {
-			code = 127
 		} else {
-			code = 1
+			// A command that never started is not a command that failed.
+			// Say which, and say why, instead of returning a bare 127.
+			if isNotFound(err) {
+				code = 127
+			} else {
+				code = 1
+			}
+			fmt.Fprintf(ctx.Out.Stderr, "%s run: could not start '%s': %v\n", brand.Bin, ctx.Rest[0], err)
+			if runtime.GOOS == "windows" {
+				pathext := os.Getenv("PATHEXT")
+				if pathext == "" {
+					pathext = ".COM;.EXE;.BAT;.CMD"
+				}
+				fmt.Fprintf(ctx.Out.Stderr, "  looked for '%s' using PATHEXT (%s)\n", target, pathext)
+			}
 		}
 	}
 	close(stop)
+	heartbeatErr := <-heartbeatDone
+	if heartbeatErr != nil {
+		fmt.Fprintf(ctx.Out.Stderr, "%s run: heartbeat failed while '%s' was running: %v\n", brand.Bin, ctx.Rest[0], heartbeatErr)
+	}
 
 	if code != 0 && ctx.Flags.Bool("keep-on-failure") {
 		fmt.Fprintf(ctx.Out.Stderr, "command exited %d; keeping card %s (--keep-on-failure)\n", code, claimID)
@@ -1169,9 +1328,116 @@ func cmdRun(ctx *Ctx) (int, error) {
 	if _, err := cmdRelease(releaseCtx); err != nil {
 		return 0, err
 	}
+	if heartbeatErr != nil && code == 0 {
+		return 0, heartbeatErr
+	}
 	return code, nil
 }
 
 func isNotFound(err error) bool {
 	return errors.Is(err, os.ErrNotExist) || strings.Contains(err.Error(), "executable file not found")
+}
+
+func resolveRunTarget(command, cwd string) (string, bool) {
+	if runtime.GOOS != "windows" {
+		if resolved, err := exec.LookPath(command); err == nil {
+			return resolved, false
+		}
+		return command, false
+	}
+	isBatch := func(name string) bool {
+		ext := strings.ToLower(filepath.Ext(name))
+		return ext == ".cmd" || ext == ".bat"
+	}
+	hasPath := strings.ContainsAny(command, `/\`) || filepath.VolumeName(command) != ""
+	if hasPath {
+		target := command
+		if !filepath.IsAbs(target) {
+			target = filepath.Join(cwd, target)
+		}
+		target = filepath.Clean(target)
+		candidates := []string{target}
+		if filepath.Ext(target) == "" {
+			for _, ext := range windowsPathExt() {
+				candidates = append(candidates, target+ext)
+			}
+		}
+		for _, candidate := range candidates {
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate, isBatch(candidate)
+			}
+		}
+		return target, false
+	}
+	if resolved, ok := resolveWindowsBare(command, filepath.SplitList(os.Getenv("PATH")), windowsPathExt()); ok {
+		return resolved, isBatch(resolved)
+	}
+	return command, false
+}
+
+func resolveWindowsBare(command string, dirs, exts []string) (string, bool) {
+	names := []string{command}
+	if filepath.Ext(command) == "" {
+		names = names[:0]
+		for _, ext := range exts {
+			names = append(names, command+ext)
+		}
+	}
+	for _, dir := range dirs {
+		dir = strings.Trim(strings.TrimSpace(dir), `"`)
+		if dir == "" {
+			continue
+		}
+		for _, name := range names {
+			candidate := filepath.Join(dir, name)
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				return candidate, true
+			}
+		}
+	}
+	return "", false
+}
+
+func windowsPathExt() []string {
+	raw := os.Getenv("PATHEXT")
+	if raw == "" {
+		raw = ".COM;.EXE;.BAT;.CMD"
+	}
+	out := []string{}
+	for _, ext := range strings.Split(raw, ";") {
+		if ext = strings.TrimSpace(ext); ext != "" {
+			if !strings.HasPrefix(ext, ".") {
+				ext = "." + ext
+			}
+			out = append(out, ext)
+		}
+	}
+	return out
+}
+
+func winCmdQuote(arg string) string {
+	if arg != "" && !strings.ContainsAny(arg, " \t\"^&|<>()") {
+		return arg
+	}
+	var b strings.Builder
+	b.WriteByte('"')
+	backslashes := 0
+	for _, r := range arg {
+		if r == '\\' {
+			backslashes++
+			continue
+		}
+		if r == '"' {
+			b.WriteString(strings.Repeat("\\", backslashes*2+1))
+			b.WriteRune(r)
+			backslashes = 0
+			continue
+		}
+		b.WriteString(strings.Repeat("\\", backslashes))
+		backslashes = 0
+		b.WriteRune(r)
+	}
+	b.WriteString(strings.Repeat("\\", backslashes*2))
+	b.WriteByte('"')
+	return b.String()
 }

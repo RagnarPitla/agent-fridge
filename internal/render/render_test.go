@@ -2,12 +2,15 @@
 package render
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
 	"github.com/RagnarPitla/agent-fridge/internal/store"
+	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
 
 func newWorkspace(t *testing.T) *store.Workspace {
@@ -81,6 +84,34 @@ func TestDriftIsDecidedByTheStateKey(t *testing.T) {
 	}
 }
 
+func TestMutationAfterSnapshotCannotBeCertifiedAsCurrent(t *testing.T) {
+	ws := newWorkspace(t)
+	captured := Snapshot(ws)
+	claim := jsonx.Obj{
+		"schema": "wcp/0.1/claim", "id": "clm_snapshot", "actorName": "alice",
+		"vendor": "human", "sessionId": "ses_snapshot", "mode": "exclusive",
+		"task": "late mutation", "state": "active", "createdAt": util.Now(), "updatedAt": util.Now(),
+		"ttlMs": float64(60000), "labels": jsonx.Obj{},
+		"scope": jsonx.Obj{
+			"include": jsonx.Arr{"docs/**"}, "exclude": jsonx.Arr{},
+			"materialized": jsonx.Arr{}, "materializedTruncated": false,
+		},
+	}
+	if err := store.SaveClaim(ws, claim); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.WriteLease(ws, claim.Str("id"), claim.Str("sessionId"), 60000, 0); err != nil {
+		t.Fatal(err)
+	}
+	oldDoor := DoorFrom(captured)
+	if strings.Contains(oldDoor, "docs/**") {
+		t.Fatal("late mutation leaked into the captured snapshot")
+	}
+	if drift, _, _ := Drift(ws, oldDoor); !drift {
+		t.Fatal("old snapshot was certified as current")
+	}
+}
+
 func TestDoorCarriesTheGeneratedWarning(t *testing.T) {
 	ws := newWorkspace(t)
 	doc := Door(ws)
@@ -112,7 +143,7 @@ func TestSnapshotShapeIsStable(t *testing.T) {
 	s := Snapshot(ws)
 	// Exactly the keys src/core/render.mjs emits, no more and no fewer:
 	// views/status.json is consumed by both implementations.
-	want := []string{"claims", "generatedAt", "notes", "waiting", "workspaceId"}
+	want := []string{"claims", "corrupt", "generatedAt", "notes", "waiting", "workspaceId"}
 	for _, key := range want {
 		if _, ok := s[key]; !ok {
 			t.Errorf("snapshot is missing %q", key)
@@ -139,5 +170,26 @@ func TestAutoRendersOnlyWhenConfigured(t *testing.T) {
 	ws.Config.Set("door.autoRender", false)
 	if Auto(ws) {
 		t.Errorf("Auto must respect door.autoRender=false")
+	}
+}
+
+func TestAutoReportsFailureWhenStateNeverConverges(t *testing.T) {
+	ws := newWorkspace(t)
+	previous := afterAutoWrite
+	afterAutoWrite = func(current *store.Workspace, attempt int) {
+		if err := os.WriteFile(filepath.Join(current.Paths.Queue, fmt.Sprintf("render-race-%d.json", attempt)), []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Cleanup(func() { afterAutoWrite = previous })
+	if Auto(ws) {
+		t.Fatal("Auto reported success after exhausting its convergence retries")
+	}
+	doc, err := os.ReadFile(ws.Paths.Door)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if drift, _, _ := Drift(ws, string(doc)); !drift {
+		t.Fatal("a non-converged render was certified as current")
 	}
 }

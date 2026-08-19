@@ -1,8 +1,15 @@
 # Agent Fridge
 
+### Stop AI coding agents from overwriting each other's work.
+
 <p align="center">
   <img src="./docs/assets/agent-fridge-hero.svg" alt="Agent Fridge - stop AI coding agents from overwriting each other's work" width="980">
 </p>
+
+**The shared whiteboard for AI coding agents.** Local path claims, leases,
+stable conflict exit codes, write-once per-participant records, and a generated
+shared board for Claude Code, Codex, GitHub Copilot, Cursor, humans, and any
+terminal.
 
 <p align="center">
   <a href="https://ragnarpitla.github.io/agent-fridge/"><strong>Read the visual story -&gt;</strong></a>
@@ -10,53 +17,91 @@
   <a href="#60-second-quick-start">60-second quickstart</a>
 </p>
 
-## Stop AI coding agents from overwriting each other's work.
-
-**Path claims, leases, write-once notes, and a generated shared board for
-Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any terminal.**
-
-**Problem:** Agentic coding tools run in isolated terminal sessions. Each can
-see the repository, but not who else is editing which files. In one shared
-checkout they can duplicate work, collide on paths, overwrite changes, or
-coordinate through one shared Markdown file that becomes another race
-condition.
-
-**Solution:** Agent Fridge adds a local coordination layer. Before editing,
-each agent claims paths. Overlaps are refused with a stable exit code. Each
-participant writes its own atomic records; the readable board is generated from
-them. No daemon, cloud service, database, or mandatory MCP server.
-
-**Think of it like a fridge door for the repo:** every housemate pins their own
-note, one magnet claims a chore, stale magnets fall off, and nobody rewrites
-somebody else's note.
-
-Local-first. Single native binary, no runtime. Works with any agent or person
-that can run a command.
-
 [![CI](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml/badge.svg)](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D20.11-green.svg)](package.json)
 [![Dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](package.json)
 
----
+## The problem
 
-## What it solves / What it does not solve
+Run two coding agents in one checkout and two things break at once.
+
+**Agents can see the repository. They cannot see path ownership.** Agentic
+coding tools run in isolated terminal sessions. Claude Code in one terminal can
+read every file, but has no idea that Copilot CLI in another is halfway through
+rewriting `src/api/`. Nothing in Git, and nothing in either agent's context,
+says "somebody is already on this." Agents in the same checkout therefore
+duplicate work, collide on paths, and overwrite each other's changes.
+
+**The usual fix is itself a race.** The standard workaround is a shared Markdown
+file - `STATUS.md`, `shared-development-updates.md`, a to-do list - that every
+agent reads and rewrites. Coordinating through one shared writer is
+read-modify-write with concurrent writers, which loses work by construction. Agent B reads the file, works for ten
+minutes, writes its version back, and everything Agent A wrote in between is
+gone. This is not hypothetical: it is [the incident this project exists because
+of](#the-actual-failure-this-prevents), where about 128 lines had to be
+reconstructed by hand.
+
+## The solution
+
+Agent Fridge adds a local coordination layer. Before editing, each agent claims
+the paths it needs. Overlaps are refused with a stable exit code. Each
+participant writes its own records, and the readable board is generated from
+them, so no two processes ever write to the same place:
+
+| | What it gives you | Command |
+| --- | --- | --- |
+| **Atomic path claims** | Exclusive ownership of a set of paths, contested at exactly one resource. Two agents cannot both hold `src/api/**`, or a glob that could ever collide with it. Overlaps are refused with a stable exit code. | `fridge claim "src/api/**" --task "refactor"` |
+| **Leases** | A claim expires on a clock. A crashed or forgotten agent releases its work automatically instead of blocking the repo forever. | `fridge heartbeat` |
+| **Write-once notes** | Durable history as one immutable file per event. Nothing is ever rewritten, so nothing can be overwritten. | `fridge pin "deploy is flaky today"` |
+| **Handoffs** | Ownership moves deliberately, with an offer the other side accepts or declines. Work is never simply abandoned. | `fridge handoff <card> --to codex` |
+| **A generated board** | One human-readable page rendered *from* the records. Read it, never edit it, and it can never be the thing you lose. | `fridge board` |
+
+**Sharded authority, derived overview.** Every authoritative write goes to a
+record only one session owns, or is contested at exactly one named resource.
+There is no global mutable ledger, so there is nothing for two agents to
+overwrite. The readable board is generated from those records, never edited.
+
+Local-first. Single native binary, no runtime. Works with any agent or person
+that can run a command. No daemon, cloud service, database, or mandatory MCP
+server.
+
+Once that is in place, the way it behaves has a name everybody already knows:
+[a fridge door for the repo](#the-fridge-door-story).
+
+## What it solves, and what it does not
 
 **What it solves**
 
-- Makes path ownership visible before an agent edits.
-- Replaces one shared Markdown writer with per-agent and per-claim atomic
-  records plus a generated overview.
-- Gives shell-capable agents and humans one local coordination contract.
+- Two agents editing the same files at the same time without knowing it.
+- Lost updates from read-modify-write on a shared Markdown status file.
+- A crashed or abandoned agent holding work hostage indefinitely.
+- "Who is doing what right now?" needing a human to go and ask.
+- Durable, greppable history of what each agent did and why.
+- Handing work between agents, or between an agent and a human, on purpose.
+- Coordination that survives across vendors, terminals and operating systems,
+  because the state is plain files in the repo rather than any one tool's memory.
 
 **What it does not solve**
 
-- It cannot stop an agent or process that ignores claims; coordination is
-  cooperative and advisory.
-- It does not replace Git branches, worktrees, reviews, or merge-conflict
-  resolution.
-- It is not a scheduler, security boundary, network lock service, or
-  multi-machine coordinator.
+- **It is not a security boundary.** Any process that can write to the checkout
+  can write to `.fridge/`. This is coordination between cooperating parties, in
+  the same way a fridge door does not stop anybody from eating your lunch. See
+  [SECURITY.md](SECURITY.md) and
+  [the threat model](spec/protocol-v0.1.md#12-security-and-trust-boundaries).
+- **It cannot stop an agent that ignores claims.** Coordination is cooperative
+  and advisory. Nothing stops an agent from editing a file it has not claimed;
+  Agent Fridge makes ownership *visible and checkable*, and the agents still
+  have to check. Use `fridge run` to make that automatic for a command.
+- **It is not a merge tool.** It prevents the collision; it does not resolve one
+  that already happened. It does not replace Git branches, worktrees, reviews,
+  or merge-conflict resolution.
+- **It is not a scheduler or a task queue.** It does not decide who should do
+  what, or in what order. It records who has taken what.
+- **It is not distributed.** One checkout on one filesystem. No network lock
+  service, no shared state between machines, no cloud service.
+- **It does not need, or provide, a daemon.** Nothing runs in the background, so
+  nothing is coordinating while your terminals are closed.
 
 ---
 
@@ -87,12 +132,12 @@ Herdr, tmux, or plain terminals.
 
 ---
 
-## The fridge-door mental model
+## The fridge-door story
 
-The agentic-engineering problem comes first. The fridge door is the memorable
+The engineering problem above comes first. The fridge door is the memorable
 mental model for how the solution behaves.
 
-The fridge door is where the household coordinates. It works because of a few
+The fridge door is where a household coordinates. It works because of a few
 unwritten rules that everybody already understands:
 
 - **Everyone pins their own note.** You do not rewrite somebody else's note to
@@ -204,7 +249,7 @@ Every asset has a matching `.sha256`, and `checksums.txt` covers the set.
 
 Both installers verify the checksum before installing, and both let you choose
 the directory and pin a release. The shell installer takes `--dir <path>` and
-`--version v0.2.1`; the PowerShell one takes `-Dir <path>` and `-Version v0.2.1`,
+`--version v0.2.2`; the PowerShell one takes `-Dir <path>` and `-Version v0.2.2`,
 because that is how PowerShell parameters work. With no arguments `install.sh`
 uses `/usr/local/bin` when it is writable and `~/.local/bin` otherwise, and
 `install.ps1` uses `%LOCALAPPDATA%\Programs\agent-fridge` and adds it to your
@@ -252,7 +297,7 @@ you know, or if you are vendoring the tool into a JavaScript monorepo. See
 
 ```bash
 fridge version
-# agent-fridge 0.2.1  protocol wcp/0.1  go go1.21.13  darwin/arm64
+# agent-fridge 0.2.2  protocol wcp/0.1  go go1.21.13  darwin/arm64
 
 fridge conform
 # Result: CONFORMANT. 62 case(s) passed.
@@ -533,8 +578,9 @@ short version is four rules:
    Locks record their owner PID and host, so a lock left by a dead process gets
    broken instead of waited on forever.
 4. **Ownership expires.** A claim carries a lease with a TTL. Heartbeats extend
-   it, any command from the owner counts as a heartbeat, and an expired claim is
-   swept by the next process that looks. A crashed agent cannot block the repo.
+   it, commands with explicit owner identity can renew it, and an expired claim
+   is swept by the next process that looks. Read-only identity inference never
+   renews ownership, so a crashed agent cannot block the repo.
 
 ```
 .fridge/

@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 // Chore cards: claim, check, heartbeat, extend, release, reap, wait, guard, run.
+import fs from 'node:fs';
+import path from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { AppError, EXIT } from '../core/errors.mjs';
 import { emit, warn } from '../core/output.mjs';
 import { withMutex } from '../core/mutex.mjs';
 import {
-  archiveClaim, clearQueueFor, isHeld, listClaims, listQueue, openWorkspace, pin, readClaim, reapStale,
-  removeQueueEntry, requireActor, saveClaim, writeLease, writeQueueEntry, writeSession,
+  archiveClaim, clearQueueFor, isHeld, listClaims, listQueue, mutateSession, openWorkspace, pin, readClaim, reapStale,
+  removeQueueEntry, requireActor, saveClaim, writeLease, writeQueueEntry,
 } from '../core/store.mjs';
-import { maybeRenew } from '../core/renew.mjs';
+import { guardSecrets } from '../core/secrets.mjs';
 import { autoRender } from '../core/render.mjs';
 import {
   defaultCaseInsensitive, isGlobal, materialize, normalizePattern, scopesOverlap,
@@ -83,7 +85,7 @@ function conflictReport(ws, mine, conflicts) {
 
 export async function claim(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   if (!ctx.positional.length) {
     throw new AppError('E_USAGE', 'What do you want to claim?', { hint: `${BIN} claim "src/**" --task "refactor api"` });
   }
@@ -93,6 +95,7 @@ export async function claim(ctx) {
       hint: `${BIN} claim "${ctx.positional[0]}" --task "what you are doing"`,
     });
   }
+  guardSecrets({ '--task': task, '--label': [].concat(ctx.flags.label || []).join(' ') }, { allow: Boolean(ctx.flags['allow-secret-like']) });
   const mode = ctx.flags.mode || 'exclusive';
   if (!['exclusive', 'shared', 'advisory'].includes(mode)) {
     throw new AppError('E_USAGE', `Unknown --mode '${mode}'.`, { hint: 'One of: exclusive, shared, advisory' });
@@ -169,8 +172,7 @@ export async function claim(ctx) {
       };
       saveClaim(ws, record);
       writeLease(ws, record.id, { sessionId: session.id, ttlMs, renewals: 0 });
-      session.tokens = { ...(session.tokens || {}), [record.id]: token };
-      writeSession(ws, session);
+      mutateSession(ws, session, (s2) => { s2.tokens = { ...(s2.tokens || {}), [record.id]: token }; });
       pin(ws, {
         type: 'claim.acquired', actor, session,
         subject: { kind: 'claim', id: record.id },
@@ -296,7 +298,6 @@ function verdict(ctx, command, rows, { requireClaim }) {
 export async function check(ctx) {
   const ws = open(ctx);
   const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
-  maybeRenew(ws, session);
   if (!ctx.positional.length) throw new AppError('E_USAGE', 'Which paths?', { hint: `${BIN} check src/api/routes.ts` });
   const queries = normalizeAll(ws, ctx.positional, { confirmGlobal: true });
   const rows = classify(ws, session, queries);
@@ -306,7 +307,6 @@ export async function check(ctx) {
 export async function guard(ctx) {
   const ws = open(ctx);
   const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
-  maybeRenew(ws, session);
   let inputs = ctx.positional;
   if (ctx.flags.staged) {
     const r = spawnSync('git', ['-C', ws.root, 'diff', '--cached', '--name-only', '-z'], { encoding: 'utf8' });
@@ -322,29 +322,32 @@ export async function guard(ctx) {
 
 export async function heartbeat(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   const ids = [].concat(ctx.flags.claim || []);
-  const mine = listClaims(ws).filter((d) => d.claim.sessionId === session.id);
-  const targets = ids.length ? mine.filter((d) => ids.includes(d.claim.id)) : mine;
-  if (ids.length && targets.length !== ids.length) {
-    const missing = ids.filter((id) => !targets.some((d) => d.claim.id === id));
-    throw new AppError('E_NOT_FOUND', `No live card of yours named ${missing.join(', ')}.`, { hint: `${BIN} whoami` });
-  }
-  if (!targets.length) return emit(ctx, 'heartbeat', { data: { renewed: [] }, text: 'you are not holding any cards' });
-  const expired = targets.filter((d) => d.stale);
-  if (expired.length) {
-    throw new AppError('E_LEASE_EXPIRED', `${expired.length} of your card(s) already fell off the door.`, {
-      hint: `${BIN} reap && ${BIN} claim ... again`,
-      details: { claims: expired.map((d) => d.claim.id) },
+  const renewed = await withMutex(ws, 'heartbeat', () => {
+    const mine = listClaims(ws).filter((d) => d.claim.sessionId === session.id);
+    const targets = ids.length ? mine.filter((d) => ids.includes(d.claim.id)) : mine;
+    if (ids.length && targets.length !== ids.length) {
+      const missing = ids.filter((id) => !targets.some((d) => d.claim.id === id));
+      throw new AppError('E_NOT_FOUND', `No live card of yours named ${missing.join(', ')}.`, { hint: `${BIN} whoami` });
+    }
+    if (!targets.length) return [];
+    const expired = targets.filter((d) => d.stale);
+    if (expired.length) {
+      throw new AppError('E_LEASE_EXPIRED', `${expired.length} of your card(s) already fell off the door.`, {
+        hint: `${BIN} reap && ${BIN} claim ... again`,
+        details: { claims: expired.map((d) => d.claim.id) },
+      });
+    }
+    const ttlOverride = ctx.flags.ttl ? parseDuration(ctx.flags.ttl, 'ttl') : null;
+    return targets.map((d) => {
+      const ttl = Math.min(ttlOverride || d.claim.ttlMs, ws.config.lease.maxTtlMs);
+      const lease = writeLease(ws, d.claim.id, { sessionId: session.id, ttlMs: ttl, renewals: (d.lease?.renewals || 0) + 1 });
+      return { claimId: d.claim.id, expiresAt: lease.expiresAt };
     });
-  }
-  const ttlOverride = ctx.flags.ttl ? parseDuration(ctx.flags.ttl, 'ttl') : null;
-  const renewed = targets.map((d) => {
-    const ttl = Math.min(ttlOverride || d.claim.ttlMs, ws.config.lease.maxTtlMs);
-    const lease = writeLease(ws, d.claim.id, { sessionId: session.id, ttlMs: ttl, renewals: (d.lease?.renewals || 0) + 1 });
-    return { claimId: d.claim.id, expiresAt: lease.expiresAt };
   });
   autoRender(ws);
+  if (!renewed.length) return emit(ctx, 'heartbeat', { data: { renewed: [] }, text: 'you are not holding any cards' });
   return emit(ctx, 'heartbeat', {
     data: { renewed },
     text: `still on it: renewed ${renewed.length} card(s)\n${renewed.map((r) => `  ${r.claimId}  until ${r.expiresAt}`).join('\n')}`,
@@ -353,28 +356,31 @@ export async function heartbeat(ctx) {
 
 export async function extend(ctx) {
   const ws = open(ctx);
-  const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   const id = ctx.positional[0];
   if (!id) throw new AppError('E_USAGE', 'Which card?', { hint: `${BIN} extend <claim-id> --ttl 1h` });
   if (!ctx.flags.ttl) throw new AppError('E_USAGE', '--ttl is required.', { hint: `${BIN} extend ${id} --ttl 1h` });
-  const d = readClaim(ws, id);
-  if (!d) throw new AppError('E_NOT_FOUND', `No card ${id}.`, { hint: `${BIN} board` });
-  if (d.claim.sessionId !== session.id) {
-    throw new AppError('E_NOT_OWNER', `Card ${id} belongs to ${d.claim.actorName}.`, { hint: `${BIN} handoff ${id} --to <you>` });
-  }
   const ttlMs = Math.min(parseDuration(ctx.flags.ttl, 'ttl'), ws.config.lease.maxTtlMs);
-  saveClaim(ws, { ...d.claim, ttlMs, updatedAt: nowIso() });
-  const lease = writeLease(ws, id, { sessionId: session.id, ttlMs, renewals: (d.lease?.renewals || 0) + 1 });
+  const lease = await withMutex(ws, 'extend', () => {
+    const d = readClaim(ws, id);
+    if (!d) throw new AppError('E_NOT_FOUND', `No card ${id}.`, { hint: `${BIN} board` });
+    if (d.claim.sessionId !== session.id) {
+      throw new AppError('E_NOT_OWNER', `Card ${id} belongs to ${d.claim.actorName}.`, { hint: `${BIN} handoff ${id} --to <you>` });
+    }
+    saveClaim(ws, { ...d.claim, ttlMs, updatedAt: nowIso() });
+    return writeLease(ws, id, { sessionId: session.id, ttlMs, renewals: (d.lease?.renewals || 0) + 1 });
+  });
   autoRender(ws);
   return emit(ctx, 'extend', { data: { claimId: id, ttlMs, expiresAt: lease.expiresAt }, text: `${id} now runs until ${lease.expiresAt}` });
 }
 
 export async function release(ctx) {
   const ws = open(ctx);
-  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor });
+  const { actor, session } = requireActor(ws, { agent: ctx.flags.agent, vendor: ctx.flags.vendor, mutating: true });
   const all = Boolean(ctx.flags.all);
   const ids = ctx.positional;
   if (!all && !ids.length) throw new AppError('E_USAGE', 'Which card?', { hint: `${BIN} release <claim-id> | ${BIN} release --all` });
+  guardSecrets({ '--note': ctx.flags.note }, { allow: Boolean(ctx.flags['allow-secret-like']) });
   const outcome = ctx.flags.outcome || 'done';
   if (!['done', 'partial', 'abandoned', 'failed'].includes(outcome)) {
     throw new AppError('E_USAGE', `Unknown --outcome '${outcome}'.`, { hint: 'One of: done, partial, abandoned, failed' });
@@ -408,9 +414,13 @@ export async function release(ctx) {
       }
     }
     const out = [];
+    const dropped = [];
     for (const d of targets) {
-      archiveClaim(ws, d.claim, 'released');
-      if (session.tokens) delete session.tokens[d.claim.id];
+      // The wire format distinguishes a card its owner took down from one an
+      // operator took away. Forcing somebody else's card is `revoked`.
+      const forcedOther = Boolean(ctx.flags.force) && d.claim.sessionId !== session.id;
+      archiveClaim(ws, d.claim, forcedOther ? 'revoked' : 'released');
+      dropped.push(d.claim.id);
       pin(ws, {
         type: 'claim.released', actor, session,
         subject: { kind: 'claim', id: d.claim.id },
@@ -419,7 +429,9 @@ export async function release(ctx) {
       });
       out.push({ claimId: d.claim.id, include: d.claim.scope.include, outcome });
     }
-    writeSession(ws, session);
+    mutateSession(ws, session, (s2) => {
+      for (const id of dropped) if (s2.tokens) delete s2.tokens[id];
+    });
     return out;
   });
   autoRender(ws);
@@ -432,7 +444,15 @@ export async function release(ctx) {
 export async function reap(ctx) {
   const ws = open(ctx);
   let actor = null; let session = null;
-  try { ({ actor, session } = requireActor(ws, { agent: ctx.flags.agent })); } catch { /* reap works without a session */ }
+  const explicit = ctx.flags.agent;
+  const candidate = explicit || process.env.FRIDGE_ACTOR;
+  if (candidate) {
+    try {
+      ({ actor, session } = requireActor(ws, { agent: candidate, mutating: true }));
+    } catch (error) {
+      if (explicit || error?.code !== 'E_NO_SESSION') throw error;
+    }
+  }
   const force = Boolean(ctx.flags.force);
   const targets = () => listClaims(ws).filter((d) => d.stale || (force && d.expired));
   if (ctx.flags['dry-run']) {
@@ -470,10 +490,16 @@ export async function wait(ctx) {
 
   // Put a marker on the waiting list so the board can show who is blocked.
   let entry = null;
-  try {
-    const { actor, session } = requireActor(ws, { agent: ctx.flags.agent });
-    entry = writeQueueEntry(ws, { id: newId('que'), claimId: id, actorName: actor.name, sessionId: session.id, include: initial.claim.scope.include, task: null });
-  } catch { /* waiting without a session is allowed; it just is not attributed */ }
+  const explicit = ctx.flags.agent;
+  const candidate = explicit || process.env.FRIDGE_ACTOR;
+  if (candidate) {
+    try {
+      const { actor, session } = requireActor(ws, { agent: candidate, mutating: true });
+      entry = writeQueueEntry(ws, { id: newId('que'), claimId: id, actorName: actor.name, sessionId: session.id, include: initial.claim.scope.include, task: null });
+    } catch (error) {
+      if (explicit || error?.code !== 'E_NO_SESSION') throw error;
+    }
+  }
   const done = () => { if (entry) removeQueueEntry(ws, entry.id); };
 
   try {
@@ -495,6 +521,47 @@ export async function wait(ctx) {
     done();
   }
 }
+
+const IS_WIN = process.platform === 'win32';
+
+/**
+ * Find what `npm` actually means on this machine.
+ *
+ * On Windows `npm` is `npm.cmd`, and `spawn` with `shell: false` cannot see
+ * that, so `fridge run -- npm test` fails with ENOENT while the same command
+ * works in the terminal. PATHEXT is consulted the way the shell would, and a
+ * batch wrapper is then run through the shell because Node refuses to spawn
+ * `.cmd` and `.bat` directly.
+ */
+function resolveExecutable(cmd, cwd) {
+  if (!IS_WIN) return { file: cmd, useShell: false };
+  const isBatch = (f) => /\.(cmd|bat)$/i.test(f);
+  const exts = (process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD').split(';').filter(Boolean);
+  if (cmd.includes('/') || cmd.includes('\\')) {
+    const abs = path.resolve(cwd, cmd);
+    const candidates = path.extname(abs) ? [abs] : [abs, ...exts.map((ext) => abs + ext)];
+    const found = candidates.find((candidate) => fs.existsSync(candidate));
+    return { file: found || abs, useShell: Boolean(found && isBatch(found)) };
+  }
+  const dirs = (process.env.PATH || '').split(path.delimiter).filter(Boolean);
+  if (path.extname(cmd)) {
+    for (const dir of dirs) {
+      const full = path.join(dir, cmd);
+      if (fs.existsSync(full)) return { file: full, useShell: isBatch(full) };
+    }
+    return { file: cmd, useShell: false };
+  }
+  for (const dir of dirs) {
+    for (const ext of exts) {
+      const full = path.join(dir, cmd + ext);
+      if (fs.existsSync(full)) return { file: full, useShell: isBatch(full) };
+    }
+  }
+  return { file: cmd, useShell: false };
+}
+
+/** Quote one argument for cmd.exe, which is the only thing that reads the string we build. */
+const winQuote = (a) => (/[\s"^&|<>()]/.test(a) ? `"${String(a).replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1')}"` : a);
 
 export async function run(ctx) {
   const ws = open(ctx);
@@ -520,21 +587,65 @@ export async function run(ctx) {
 
   const [cmd, ...args] = ctx.rest;
   const ttlMs = parseDuration(ctx.flags.ttl || ws.config.lease.defaultTtlMs, 'ttl');
-  const timer = setInterval(() => {
+  let heartbeatStopped = false;
+  let heartbeatError = null;
+  let heartbeatInFlight = Promise.resolve();
+  const beat = async () => {
+    if (heartbeatStopped) return;
     try {
       const ws2 = open(ctx);
-      const { session } = requireActor(ws2, { agent: ctx.flags.agent });
-      writeLease(ws2, claimId, { sessionId: session.id, ttlMs, renewals: 0 });
-    } catch { /* the child matters more than the heartbeat */ }
+      const { session } = requireActor(ws2, { agent: ctx.flags.agent, mutating: true });
+      await withMutex(ws2, 'run-heartbeat', () => {
+        if (heartbeatStopped) return;
+        const current = readClaim(ws2, claimId);
+        if (!current) throw new AppError('E_NOT_FOUND', `Card ${claimId} disappeared while '${cmd}' was running.`);
+        if (process.env.FRIDGE_TEST === '1' && process.env.FRIDGE_FAULT === 'delay-run-heartbeat') {
+          fs.writeFileSync(path.join(ws2.paths.tmp, 'run-heartbeat-entered'), 'entered\n');
+          return sleep(800).then(() => {
+            if (heartbeatStopped) return;
+            writeLease(ws2, claimId, {
+              sessionId: session.id,
+              ttlMs,
+              renewals: Number(current.lease?.renewals || 0) + 1,
+            });
+          });
+        }
+        writeLease(ws2, claimId, {
+          sessionId: session.id,
+          ttlMs,
+          renewals: Number(current.lease?.renewals || 0) + 1,
+        });
+      });
+    } catch (error) {
+      heartbeatError ||= error;
+    }
+  };
+  const timer = setInterval(() => {
+    heartbeatInFlight = heartbeatInFlight.then(beat);
   }, Math.max(1000, Math.floor(ttlMs / 3)));
   timer.unref?.();
 
-  const code = await new Promise((resolve) => {
-    const child = spawn(cmd, args, { stdio: 'inherit', cwd: ctx.cwd, shell: false });
-    child.on('error', (e) => resolve(e.code === 'ENOENT' ? 127 : 1));
-    child.on('close', (c, signal) => resolve(signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGKILL: 9 })[signal] || 0) : c ?? 0));
+  const target = resolveExecutable(cmd, ctx.cwd);
+  const outcome = await new Promise((resolve) => {
+    const child = target.useShell
+      ? spawn(`${winQuote(target.file)} ${args.map(winQuote).join(' ')}`.trim(), { stdio: 'inherit', cwd: ctx.cwd, shell: true })
+      : spawn(target.file, args, { stdio: 'inherit', cwd: ctx.cwd, shell: false });
+    // A command that never started is not a command that failed. Say which,
+    // and say why, instead of returning a bare 127.
+    child.on('error', (e) => resolve({ code: e.code === 'ENOENT' ? 127 : 1, spawnError: e }));
+    child.on('close', (c, signal) => resolve({ code: signal ? 128 + (({ SIGINT: 2, SIGTERM: 15, SIGKILL: 9 })[signal] || 0) : c ?? 0 }));
   });
+  heartbeatStopped = true;
   clearInterval(timer);
+  await heartbeatInFlight;
+  const code = outcome.code;
+  if (heartbeatError) {
+    process.stderr.write(`${BIN} run: heartbeat failed while '${cmd}' was running: ${heartbeatError.message}\n`);
+  }
+  if (outcome.spawnError) {
+    process.stderr.write(`${BIN} run: could not start '${cmd}': ${outcome.spawnError.code || outcome.spawnError.message}\n`);
+    if (IS_WIN) process.stderr.write(`  looked for '${target.file}' using PATHEXT (${process.env.PATHEXT || '.COM;.EXE;.BAT;.CMD'})\n`);
+  }
 
   if (code !== 0 && ctx.flags['keep-on-failure']) {
     process.stderr.write(`command exited ${code}; keeping card ${claimId} (--keep-on-failure)\n`);
@@ -544,5 +655,6 @@ export async function run(ctx) {
     ...ctx, command: 'release', positional: [claimId], quiet: true,
     flags: { ...ctx.flags, outcome: code === 0 ? 'done' : 'failed', note: `${cmd} exited ${code}` },
   });
+  if (heartbeatError && code === 0) throw heartbeatError;
   return code;
 }

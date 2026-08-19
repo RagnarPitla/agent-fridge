@@ -14,6 +14,7 @@ import (
 	"github.com/RagnarPitla/agent-fridge/internal/errs"
 	"github.com/RagnarPitla/agent-fridge/internal/fsx"
 	"github.com/RagnarPitla/agent-fridge/internal/jsonx"
+	pathutil "github.com/RagnarPitla/agent-fridge/internal/paths"
 	"github.com/RagnarPitla/agent-fridge/internal/util"
 )
 
@@ -128,6 +129,14 @@ func (ws *Workspace) StaleMs() int { return ws.Config.Int("mutex.staleMs") }
 // MaxHoldMs satisfies mutex.Env.
 func (ws *Workspace) MaxHoldMs() int { return ws.Config.Int("mutex.maxHoldMs") }
 
+// PinSystemNote satisfies mutex.Recorder, so lock.broken and lock.slow reach
+// the wall without every caller of mutex.With having to opt in. Best effort by
+// design: the lock decision has already been made and must not be undone by a
+// failure to write evidence about it.
+func (ws *Workspace) PinSystemNote(noteType, subject, summary string, data jsonx.Obj) {
+	_, _ = Pin(ws, PinArgs{Type: noteType, Subject: subject, Summary: summary, Data: data})
+}
+
 // SessionID satisfies mutex.Env.
 func (ws *Workspace) SessionID() string { return ws.SessID }
 
@@ -216,19 +225,83 @@ func Open(opts OpenOptions) (*Workspace, error) {
 		wsID = util.NewID("wsp")
 	}
 	config := jsonx.DeepMerge(DefaultConfig(wsID), loaded)
+	door, err := ValidateDoorConfig(root, config, "E_STATE_CORRUPT")
+	if err != nil {
+		return nil, err
+	}
+	p.Door = door
 	return &Workspace{Root: root, Paths: p, Initialized: true, Config: config, Cwd: cwd, Version: versionRaw}, nil
 }
 
-// Gitignore is the allowlist written into .fridge/.gitignore.
-var Gitignore = "# Managed by " + brand.Product + " (" + brand.Protocol + ").\n" +
-	"# Live coordination state is machine-local. The notes wall is shared history.\n" +
-	"/*\n" +
-	"!/.gitignore\n" +
-	"!/VERSION\n" +
-	"!/config.json\n" +
-	"!/workspace.json\n" +
-	"!/notes/\n" +
-	"!/actors/\n"
+// ValidateDoorConfig checks shape and containment before any configured view is
+// written. shapeCode is E_STATE_CORRUPT for files on disk and E_USAGE for a
+// rejected config command.
+func ValidateDoorConfig(root string, config jsonx.Obj, shapeCode string) (string, error) {
+	invalid := func(message string) (string, error) {
+		e := errs.New(shapeCode, message)
+		if shapeCode == "E_STATE_CORRUPT" {
+			e = e.WithHint("Fix .fridge/config.json or run fridge doctor --fix.")
+		}
+		return "", e
+	}
+	door, ok := config.Get("door").(jsonx.Obj)
+	if !ok {
+		return invalid("Config key door must be an object.")
+	}
+	doorPath, ok := door["path"].(string)
+	if !ok || strings.TrimSpace(doorPath) == "" {
+		return invalid("Config key door.path must be a non-empty string.")
+	}
+	targets, ok := door["extraTargets"].(jsonx.Arr)
+	if !ok {
+		return invalid("Config key door.extraTargets must be an array of non-empty strings.")
+	}
+	for _, raw := range targets {
+		target, ok := raw.(string)
+		if !ok || strings.TrimSpace(target) == "" {
+			return invalid("Config key door.extraTargets must be an array of non-empty strings.")
+		}
+		if _, err := pathutil.ResolveInsideWorkspace(root, target, "door.extraTargets entry"); err != nil {
+			return "", err
+		}
+	}
+	return pathutil.ResolveInsideWorkspace(root, doorPath, "door.path")
+}
+
+// GitignoreFor is the allowlist written into .fridge/.gitignore.
+//
+// notes.commit: false has to be honoured here, not just in documentation: the
+// notes wall is only kept out of Git if the ignore file stops un-ignoring it.
+// Callers rewrite this file whenever that setting changes.
+func GitignoreFor(commitNotes bool) string {
+	tail := " notes.commit is false, so the notes wall stays local too."
+	notes := ""
+	if commitNotes {
+		tail = " The notes wall is shared history."
+		notes = "!/notes/\n"
+	}
+	return "# Managed by Agent Fridge (" + brand.Protocol + ").\n" +
+		"# Live coordination state is machine-local." + tail + "\n" +
+		"/*\n" +
+		"!/.gitignore\n" +
+		"!/VERSION\n" +
+		"!/config.json\n" +
+		"!/workspace.json\n" +
+		notes +
+		"!/actors/\n"
+}
+
+// Gitignore is the default allowlist, for a workspace that commits its notes.
+var Gitignore = GitignoreFor(true)
+
+// WriteGitignore rewrites .fridge/.gitignore from the live config.
+func WriteGitignore(ws *Workspace) error {
+	commitNotes := true
+	if v, ok := ws.Config.Get("notes.commit").(bool); ok {
+		commitNotes = v
+	}
+	return fsx.WriteAtomic(filepath.Join(ws.Paths.Dir, ".gitignore"), GitignoreFor(commitNotes), ws.Paths.Tmp)
+}
 
 // Init creates a fresh .fridge/ tree.
 func Init(root string, force bool) (*Workspace, string, error) {
@@ -329,6 +402,12 @@ func ReadActor(ws *Workspace, name string) jsonx.Obj {
 
 // ResolveActorName applies the flag, then the env var, then the sole actor.
 func ResolveActorName(ws *Workspace, explicit string) (string, error) {
+	return ResolveActorNameFor(ws, explicit, false)
+}
+
+// ResolveActorNameFor resolves the acting identity. When mutating is true the
+// identity must be stated, never guessed.
+func ResolveActorNameFor(ws *Workspace, explicit string, mutating bool) (string, error) {
 	if explicit != "" {
 		return explicit, nil
 	}
@@ -336,9 +415,6 @@ func ResolveActorName(ws *Workspace, explicit string) (string, error) {
 		return v, nil
 	}
 	actors := ListActors(ws)
-	if len(actors) == 1 {
-		return actors[0].Str("name"), nil
-	}
 	if len(actors) == 0 {
 		return "", errs.New("E_NO_SESSION", "Nobody has put their name on the door yet.").
 			WithHint("fridge join --agent <your-name>")
@@ -346,6 +422,17 @@ func ResolveActorName(ws *Workspace, explicit string) (string, error) {
 	names := make([]string, 0, len(actors))
 	for _, a := range actors {
 		names = append(names, a.Str("name"))
+	}
+	// Being the only name on the door is not proof of who is typing. Two
+	// terminals share one checkout, so inheriting the sole actor silently
+	// gives the second terminal the first one's claims, which is exactly the
+	// failure this tool exists to prevent. Reads may guess; writes may not.
+	if mutating {
+		return "", errs.New("E_NO_SESSION", "This command changes the door, so it has to know who you are.").
+			WithHint("Pass --agent <name>, or export FRIDGE_ACTOR=<name>. On the door: " + strings.Join(names, ", "))
+	}
+	if len(actors) == 1 {
+		return actors[0].Str("name"), nil
 	}
 	return "", errs.New("E_NO_SESSION",
 		fmt.Sprintf("More than one housemate is on this door (%s).", strings.Join(names, ", "))).
@@ -471,36 +558,98 @@ func WriteSession(ws *Workspace, session jsonx.Obj) error {
 	return nil
 }
 
-// RequireActor resolves, and if necessary creates, the acting housemate.
+// RequireActor resolves a joined housemate for a read-only command.
 func RequireActor(ws *Workspace, agent, vendor string) (jsonx.Obj, jsonx.Obj, error) {
-	name, err := ResolveActorName(ws, agent)
+	return RequireActorFor(ws, agent, vendor, false)
+}
+
+// RequireActorMutating is RequireActor for a command that changes the door.
+func RequireActorMutating(ws *Workspace, agent, vendor string) (jsonx.Obj, jsonx.Obj, error) {
+	return RequireActorFor(ws, agent, vendor, true)
+}
+
+// RequireActorFor resolves the actor and its live session. Actor and session
+// creation belong only to join; a typo on --agent must not mutate the door.
+func RequireActorFor(ws *Workspace, agent, vendor string, mutating bool) (jsonx.Obj, jsonx.Obj, error) {
+	name, err := ResolveActorNameFor(ws, agent, mutating)
 	if err != nil {
 		return nil, nil, err
 	}
 	actor := ReadActor(ws, name)
 	if actor == nil {
-		if agent != "" || os.Getenv("FRIDGE_ACTOR") != "" {
-			res, err := JoinActor(ws, name, vendor)
-			if err != nil {
-				return nil, nil, err
-			}
-			ws.Actor, ws.Session, ws.SessID = res.Actor, res.Session, res.Session.Str("id")
-			return res.Actor, res.Session, nil
-		}
 		return nil, nil, errs.New("E_NO_SESSION",
 			fmt.Sprintf("No housemate named '%s' on this door.", name)).
 			WithHint("fridge join --agent " + name)
 	}
 	session := ReadSession(ws, actor.Str("currentSessionId"))
 	if session == nil {
-		res, err := JoinActor(ws, name, actor.Str("vendor"))
-		if err != nil {
-			return nil, nil, err
-		}
-		session = res.Session
+		return nil, nil, errs.New("E_NO_SESSION",
+			fmt.Sprintf("%s has no current session on this door.", actor.Str("name"))).
+			WithHint(fmt.Sprintf("fridge join --agent %s --vendor %s", actor.Str("name"), actor.Str("vendor")))
 	}
 	ws.Actor, ws.Session, ws.SessID = actor, session, session.Str("id")
 	return actor, session, nil
+}
+
+// RenewOwnLeases is piggyback renewal: any command you run is proof you are still
+// alive, so it refreshes your own leases when they are more than half used up.
+// No daemon needed.
+func RenewOwnLeases(ws *Workspace, session jsonx.Obj) ([]string, error) {
+	if session == nil || os.Getenv("FRIDGE_NO_RENEW") == "1" {
+		return nil, nil
+	}
+	if !ws.Config.Bool("lease.renewOnAnyCommand") {
+		return nil, nil
+	}
+	ratio := ws.Config.Num("lease.renewThresholdRatio")
+	renewed := []string{}
+	claims, err := ListClaimsStrict(ws, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range claims {
+		c := d.Claim
+		if c.Str("sessionId") != session.Str("id") || d.Stale {
+			continue
+		}
+		ttl := int64(c.Num("ttlMs"))
+		if ttl == 0 {
+			ttl = int64(ws.Config.Num("lease.defaultTtlMs"))
+		}
+		if float64(d.ExpiresInMs) > float64(ttl)*ratio {
+			continue
+		}
+		if _, err := WriteLease(ws, c.Str("id"), session.Str("id"), ttl, int(d.Lease.Num("renewals"))+1); err != nil {
+			return nil, err
+		}
+		renewed = append(renewed, c.Str("id"))
+	}
+	return renewed, nil
+}
+
+// MutateSession is a read-modify-write of one session record, always from what
+// is on disk.
+//
+// A session object read before the mutex is a photograph, and writing it back
+// afterwards silently reverts anything another process in the same session
+// recorded meanwhile. Callers mutate the fresh copy this hands them.
+func MutateSession(ws *Workspace, session jsonx.Obj, fn func(jsonx.Obj)) error {
+	id := session.Str("id")
+	if id == "" {
+		return nil
+	}
+	fresh := ReadSession(ws, id)
+	if fresh == nil {
+		fresh = session.Clone()
+	}
+	fn(fresh)
+	if err := WriteSession(ws, fresh); err != nil {
+		return err
+	}
+	if v, ok := fresh.Get("tokens").(jsonx.Obj); ok {
+		session["tokens"] = v
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------- notes
@@ -567,7 +716,7 @@ func Pin(ws *Workspace, args PinArgs) (jsonx.Obj, error) {
 			"data":      data,
 			"writer":    brand.Writer,
 		}
-		err := fsx.CreateJSONExclusive(filepath.Join(dir, name), note)
+		err := fsx.CreateJSONExclusive(filepath.Join(dir, name), note, ws.Paths.Tmp)
 		if err == nil {
 			return note, nil
 		}
@@ -724,10 +873,42 @@ func Decorate(ws *Workspace, claim jsonx.Obj) Decorated {
 
 // ListClaims returns every claim on the door, oldest first.
 func ListClaims(ws *Workspace, includeStale bool) []Decorated {
+	out, _ := listClaims(ws, includeStale)
+	return out
+}
+
+// ListClaimsTolerant returns the readable claims plus the paths of any records
+// that could not be parsed, so a view can show damage instead of an empty,
+// falsely safe board.
+func ListClaimsTolerant(ws *Workspace, includeStale bool) ([]Decorated, []string) {
+	return listClaims(ws, includeStale)
+}
+
+// ListClaimsStrict refuses to answer when any record is unreadable. Ownership
+// decisions must fail closed: an unparseable exclusive card must never look
+// like free space.
+func ListClaimsStrict(ws *Workspace, includeStale bool) ([]Decorated, error) {
+	out, corrupt := listClaims(ws, includeStale)
+	if len(corrupt) > 0 {
+		return nil, errs.New("E_STATE_CORRUPT",
+			fmt.Sprintf("%d claim record(s) cannot be read, so ownership is unknown.", len(corrupt))).
+			WithHint("fridge doctor --fix   (moves damaged records to .fridge/quarantine/)").
+			WithDetails(map[string]any{"corrupt": corrupt})
+	}
+	return out, nil
+}
+
+func listClaims(ws *Workspace, includeStale bool) ([]Decorated, []string) {
 	out := []Decorated{}
+	corrupt := []string{}
 	for _, file := range fsx.ListJSON(ws.Paths.Claims) {
 		v, ok := fsx.ReadJSONSafe(file)
 		if !ok {
+			rel, err := filepath.Rel(ws.Root, file)
+			if err != nil {
+				rel = file
+			}
+			corrupt = append(corrupt, filepath.ToSlash(rel))
 			continue
 		}
 		d := Decorate(ws, v)
@@ -739,17 +920,24 @@ func ListClaims(ws *Workspace, includeStale bool) []Decorated {
 	sort.SliceStable(out, func(i, j int) bool {
 		return out[i].Claim.Str("createdAt") < out[j].Claim.Str("createdAt")
 	})
-	return out
+	sort.Strings(corrupt)
+	return out, corrupt
 }
 
-// ReadClaim loads and decorates one claim by id.
-func ReadClaim(ws *Workspace, id string) *Decorated {
-	v, ok := fsx.ReadJSONSafe(ClaimFile(ws, id))
+// ReadClaim loads and decorates one claim by id. A missing card is (nil, nil);
+// a card that exists but cannot be parsed is an error, never "not there".
+func ReadClaim(ws *Workspace, id string) (*Decorated, error) {
+	file := ClaimFile(ws, id)
+	if _, err := os.Stat(file); err != nil {
+		return nil, nil
+	}
+	v, ok := fsx.ReadJSONSafe(file)
 	if !ok {
-		return nil
+		return nil, errs.New("E_STATE_CORRUPT", "Card "+id+" exists but cannot be read, so its ownership is unknown.").
+			WithHint("fridge doctor --fix   (moves damaged records to .fridge/quarantine/)")
 	}
 	d := Decorate(ws, v)
-	return &d
+	return &d, nil
 }
 
 // SaveClaim persists a claim record.
@@ -829,7 +1017,11 @@ func ClearQueueFor(ws *Workspace, claimID string) []jsonx.Obj {
 // ReapStale sweeps fallen cards. Must be called while holding the mutex.
 func ReapStale(ws *Workspace, actor, session jsonx.Obj, force bool) ([]jsonx.Obj, error) {
 	reaped := []jsonx.Obj{}
-	for _, d := range ListClaims(ws, true) {
+	claims, err := ListClaimsStrict(ws, true)
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range claims {
 		if !d.Stale && !(force && d.Expired) {
 			continue
 		}
@@ -896,6 +1088,22 @@ func DeleteMessage(ws *Workspace, actorName, id string) bool {
 		return false
 	}
 	return os.Remove(p) == nil
+}
+
+// ArchiveMessage moves one message out of the inbox into a terminal state.
+// The protocol gives a message a lifecycle (offered -> accepted, declined,
+// withdrawn, expired); deleting it destroys the record of which one happened.
+func ArchiveMessage(ws *Workspace, message jsonx.Obj, state string) (jsonx.Obj, error) {
+	dir := filepath.Join(ws.Paths.Dir, "archive", "messages")
+	if err := fsx.EnsureDir(dir); err != nil {
+		return nil, err
+	}
+	final := message.With(jsonx.Obj{"state": state, "closedAt": util.Now()})
+	if err := fsx.WriteJSONAtomic(filepath.Join(dir, message.Str("id")+".json"), final, ws.Paths.Tmp); err != nil {
+		return nil, err
+	}
+	DeleteMessage(ws, message.Str("toName"), message.Str("id"))
+	return final, nil
 }
 
 // FindMessage looks up one message by id.

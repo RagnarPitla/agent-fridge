@@ -178,6 +178,91 @@ func TestStaleLockIsBrokenAndReported(t *testing.T) {
 	}
 }
 
+func TestBrokenOldHolderPreservesReplacementLock(t *testing.T) {
+	env := newEnv(t)
+	env.timeoutMs = 1500
+	env.staleMs = 30
+	env.maxHoldMs = 1000
+	oldEntered := make(chan struct{})
+	oldDone := make(chan error, 1)
+	go func() {
+		oldDone <- With(env, "old-holder", func() error {
+			close(oldEntered)
+			time.Sleep(150 * time.Millisecond)
+			return nil
+		}, nil)
+	}()
+	<-oldEntered
+	time.Sleep(50 * time.Millisecond)
+
+	if err := With(env, "replacement", func() error {
+		time.Sleep(160 * time.Millisecond)
+		owner, ok := fsx.ReadJSONSafe(filepath.Join(env.dir, "owner.json"))
+		if !ok {
+			t.Fatal("old holder removed the replacement lock")
+		}
+		if owner.Str("op") != "replacement" {
+			t.Fatalf("lock belongs to %q, want replacement", owner.Str("op"))
+		}
+		return nil
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-oldDone; err != nil {
+		t.Fatalf("old holder failed while releasing: %v", err)
+	}
+}
+
+func TestRenewableHolderIsNotBrokenWhileStillActive(t *testing.T) {
+	env := newEnv(t)
+	env.timeoutMs = 2000
+	env.staleMs = 500
+	env.maxHoldMs = 2000
+	firstStarted := make(chan struct{})
+	firstDone := atomic.Bool{}
+	firstResult := make(chan error, 1)
+	refreshNow := make(chan struct{})
+	refreshed := make(chan error, 1)
+	releaseFirst := make(chan struct{})
+	go func() {
+		firstResult <- WithRenewable(env, "renewable-holder", func(refresh func() error) error {
+			close(firstStarted)
+			<-refreshNow
+			if err := refresh(); err != nil {
+				refreshed <- err
+				return err
+			}
+			refreshed <- nil
+			<-releaseFirst
+			firstDone.Store(true)
+			return nil
+		}, nil)
+	}()
+	<-firstStarted
+	time.Sleep(600 * time.Millisecond)
+	close(refreshNow)
+	if err := <-refreshed; err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		time.Sleep(100 * time.Millisecond)
+		close(releaseFirst)
+	}()
+	enteredEarly := false
+	if err := With(env, "contender", func() error {
+		enteredEarly = !firstDone.Load()
+		return nil
+	}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-firstResult; err != nil {
+		t.Fatal(err)
+	}
+	if enteredEarly {
+		t.Fatal("a live holder was replaced after staleMs despite refreshing")
+	}
+}
+
 func TestOwnerFileNamesTheHolder(t *testing.T) {
 	env := newEnv(t)
 	var seen jsonx.Obj

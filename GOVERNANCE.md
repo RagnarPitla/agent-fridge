@@ -85,7 +85,7 @@ the current architecture, starting with
 
 ## Protocol versioning
 
-The protocol version (`wcp/0.1`) is independent of the CLI version (`0.2.1`).
+The protocol version (`wcp/0.1`) is independent of the CLI version (`0.2.2`).
 
 - Every record carries a `schema` field naming its protocol version.
 - **Additive** changes (a new optional field, a new note type, a new mode) bump the

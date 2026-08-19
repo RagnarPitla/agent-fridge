@@ -6,6 +6,16 @@ import { AppError } from './errors.mjs';
 import { readJsonSafe, writeJsonAtomic, rmrf, unlinkQuiet } from './fsx.mjs';
 import { hostId, jitter, nowIso, processAlive, randomToken, sleep, sleepSync } from './util.mjs';
 import { WRITER } from '../brand.mjs';
+import { pin } from './store.mjs';
+
+// Breaking a lock, and holding one too long, are both safety-relevant events
+// that belong on the wall rather than in a terminal somebody has closed. A
+// failure to record one must never take down the operation that caused it:
+// the note is evidence, not a step in the protocol.
+function recordLockEvent(ws, type, summary, data) {
+  try { pin(ws, { type, actor: null, session: null, subject: 'registry.lock.d', summary, data }); }
+  catch { /* evidence is best effort; the lock decision already stands */ }
+}
 
 // A seam. Windows fails a stat of a directory that is pending deletion, and
 // the only honest answer to a failed stat is "I cannot tell how old this lock
@@ -50,8 +60,37 @@ export const seams = {
 // that blocks it is open for microseconds.
 const RELEASE_TIMEOUT_MS = 2000;
 
-/** Identifies one specific tenancy of the lock, so a waiter can tell "the holder I judged" from "whoever holds it now". */
-const ownerKey = (o) => `${o.host}|${o.pid}|${o.acquiredAt}`;
+/** Identifies the exact owner snapshot a waiter judged, including its latest heartbeat. */
+const ownerKey = (o) => `${o.host}|${o.pid}|${o.acquiredAt}|${o.heartbeatAt || o.acquiredAt}|${o.nonce || ''}`;
+
+/**
+ * Serialises every removal of the lock directory behind a second directory.
+ *
+ * Both breaking somebody else's lock and releasing our own are check-then-act:
+ * read the owner file, decide it is removable, remove it. Between the check
+ * and the act the lock can change hands, and removing a lock that has changed
+ * hands admits a second holder. Holding this while doing both closes that
+ * window, because a lock can only change hands by first being removed.
+ */
+function withBreakLock(lockDir, stale, fn) {
+  const breakDir = `${lockDir}.break`;
+  try {
+    fs.mkdirSync(breakDir, { recursive: false });
+  } catch {
+    // Somebody else is removing, or a remover died holding this. Removal
+    // takes microseconds, so a break lock older than the stale window is
+    // unambiguously abandoned. A stat we cannot take proves nothing.
+    try {
+      if (Date.now() - seams.statLock(breakDir).mtimeMs > stale) rmrf(breakDir);
+    } catch { /* cannot judge it, so leave it alone */ }
+    return { entered: false, value: undefined };
+  }
+  try {
+    return { entered: true, value: fn() };
+  } finally {
+    try { fs.rmdirSync(breakDir); } catch { rmrf(breakDir); }
+  }
+}
 
 /**
  * Removes a lock that a waiter has judged to be dead.
@@ -69,19 +108,7 @@ const ownerKey = (o) => `${o.host}|${o.pid}|${o.acquiredAt}`;
  * the removal is one atomic step from any other process's point of view.
  */
 function breakLock(lockDir, ownerFile, key, ownerOK, stale) {
-  const breakDir = `${lockDir}.break`;
-  try {
-    fs.mkdirSync(breakDir, { recursive: false });
-  } catch {
-    // Somebody else is breaking, or a breaker died holding this. Breaking
-    // takes microseconds, so a break lock older than the stale window is
-    // unambiguously abandoned. A stat we cannot take proves nothing.
-    try {
-      if (Date.now() - seams.statLock(breakDir).mtimeMs > stale) rmrf(breakDir);
-    } catch { /* cannot judge it, so leave it alone */ }
-    return false;
-  }
-  try {
+  return withBreakLock(lockDir, stale, () => {
     const again = readJsonSafe(ownerFile);
     if (again.ok !== ownerOK) return false;
     if (again.ok && ownerKey(again.value) !== key) return false;
@@ -90,9 +117,29 @@ function breakLock(lockDir, ownerFile, key, ownerOK, stale) {
     try { fs.renameSync(lockDir, dead); } catch { return false; }
     rmrf(dead);
     return true;
-  } finally {
-    try { fs.rmdirSync(breakDir); } catch { rmrf(breakDir); }
+  }).value === true;
+}
+
+/** Doctor-style recovery through the same generation-fenced breaker as acquisition. */
+export function breakMutexIfRecoverable(ws) {
+  const lockDir = ws.paths.mutex;
+  const ownerFile = path.join(lockDir, 'owner.json');
+  const stale = ws.config.mutex.staleMs;
+  const owner = readJsonSafe(ownerFile);
+  let key = 'unreadable';
+  let recoverable = false;
+  if (owner.ok) {
+    key = ownerKey(owner.value);
+    const age = Date.now() - Date.parse(owner.value.heartbeatAt || owner.value.acquiredAt);
+    recoverable = (owner.value.host === hostId() && !processAlive(owner.value.pid)) || age > stale;
+  } else {
+    try {
+      const stat = seams.statLock(lockDir);
+      key = `unreadable@${stat.mtimeMs}`;
+      recoverable = Date.now() - stat.mtimeMs > stale;
+    } catch { /* an uninspectable lock is not safe to break */ }
   }
+  return recoverable && breakLock(lockDir, ownerFile, key, owner.ok, stale);
 }
 
 export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}) {
@@ -103,6 +150,11 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
   const deadline = Date.now() + limit;
   let delay = 5;
   let held = false;
+  // Our fencing token. It is written into owner.json as part of taking the
+  // lock, and checked again before we remove it. A holder that was judged dead
+  // and broken finds somebody else's nonce and keeps its hands off, so a
+  // replacement lock is never removed by the process it replaced.
+  const nonce = randomToken();
   // What the lock looked like the first time we suspected it was dead, and
   // when we first suspected it. A lock whose owner file cannot be read yet is
   // not evidence of a dead process: it is the normal window between mkdir and
@@ -110,6 +162,17 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
   // whole stale window.
   let suspectKey = '';
   let suspectSince = 0;
+
+  const dropIfStillOurs = () => {
+    const o = readJsonSafe(ownerFile);
+    // Not provably ours. Either we were broken and somebody else holds it, or
+    // a replacement is mid-acquire. Removing it in either case admits a second
+    // holder, so leave it: stale detection reclaims a genuine orphan.
+    if (!o.ok) return !fs.existsSync(lockDir);
+    if (o.value.nonce !== nonce) return true;
+    if (seams.dropLockOnce(lockDir, ownerFile)) return true;
+    return seams.dismantleLockInPlace(lockDir, ownerFile);
+  };
 
   const release = () => {
     if (!held) return;
@@ -119,15 +182,13 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
     // single-shot release turns it into a lock nobody holds and nobody can
     // take. Busy-waiting here is deliberate: release runs from process exit
     // and signal handlers, where nothing can be awaited.
-    const deadline = Date.now() + RELEASE_TIMEOUT_MS;
+    const until = Date.now() + RELEASE_TIMEOUT_MS;
     for (;;) {
-      if (seams.dropLockOnce(lockDir, ownerFile)) return;
-      if (Date.now() >= deadline) break;
+      const attempt = withBreakLock(lockDir, stale, dropIfStillOurs);
+      if (attempt.entered && attempt.value) return;
+      if (Date.now() >= until) return;
       sleepSync(2);
     }
-    // Still stuck. Take it apart in place; if even that fails, the lock is
-    // left for stale detection to reclaim, which is slow but never unsafe.
-    seams.dismantleLockInPlace(lockDir, ownerFile);
   };
   const onExit = () => release();
   const onSignal = (sig) => { release(); process.exit(sig === 'SIGINT' ? 130 : 143); };
@@ -135,9 +196,26 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
   while (!held) {
     try {
       fs.mkdirSync(lockDir, { recursive: false });
+      // Stamp identity immediately. Until the nonce is on disk a release
+      // cannot prove the lock is ours, so this happens here rather than after
+      // the handlers are installed, and a failure is cleaned up on the spot
+      // while no other process can yet have judged this lock stale.
+      try {
+        const acquiredAt = nowIso();
+        writeJsonAtomic(ownerFile, {
+          acquiredAt, heartbeatAt: acquiredAt, host: hostId(), nonce, op, pid: process.pid,
+          schema: 'wcp/0.1/mutex-owner', sessionId: ws.sessionId || null, writer: WRITER,
+        }, ws.paths.tmp);
+      } catch (e) {
+        seams.dropLockOnce(lockDir, ownerFile) || seams.dismantleLockInPlace(lockDir, ownerFile);
+        throw new AppError('E_STATE_CORRUPT', `Could not stamp the registry lock: ${e.code || e.message}`, {
+          hint: 'Check permissions on .fridge/locks and .fridge/tmp.',
+        });
+      }
       held = true;
       break;
     } catch (e) {
+      if (e instanceof AppError) throw e;
       if (e.code !== 'EEXIST') {
         if (e.code === 'ENOENT') { fs.mkdirSync(path.dirname(lockDir), { recursive: true }); continue; }
         if (e.code === 'EACCES' || e.code === 'EROFS') throw new AppError('E_PERMISSION', `Cannot lock ${lockDir}: ${e.code}`);
@@ -164,15 +242,19 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
         }
       } else {
         const o = owner.value;
-        const age = Date.now() - Date.parse(o.acquiredAt || 0);
+        const age = Date.now() - Date.parse(o.heartbeatAt || o.acquiredAt || 0);
         key = ownerKey(o);
         if (o.host === hostId() && !processAlive(o.pid)) { breakIt = true; why = 'owner-process-gone'; }
         else if (age > stale) { breakIt = true; why = 'owner-stale'; }
         if (suspectKey !== key) { suspectKey = key; suspectSince = Date.now(); }
       }
       if (breakIt) {
-        if (breakLock(lockDir, ownerFile, key, owner.ok, stale) && onBreak) {
-          await onBreak({ why, owner: owner.ok ? owner.value : null });
+        if (breakLock(lockDir, ownerFile, key, owner.ok, stale)) {
+          const evidence = owner.ok ? owner.value : null;
+          recordLockEvent(ws, 'lock.broken', `broke an abandoned registry lock (${why})`, {
+            why, op, previousOwner: evidence && { pid: evidence.pid ?? null, host: evidence.host ?? null, op: evidence.op ?? null, acquiredAt: evidence.acquiredAt ?? null },
+          });
+          if (onBreak) await onBreak({ why, owner: evidence });
         }
         suspectKey = '';
         suspectSince = 0;
@@ -193,23 +275,54 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
   process.on('SIGTERM', onSignal);
   const startedAt = Date.now();
   try {
-    try {
-      writeJsonAtomic(ownerFile, {
-        acquiredAt: nowIso(), host: hostId(), op, pid: process.pid,
-        schema: 'wcp/0.1/mutex-owner', sessionId: ws.sessionId || null, writer: WRITER,
-      }, ws.paths.tmp);
-    } catch (e) {
-      // The usual reason this fails is that another process judged our lock
-      // dead and broke it while we were still setting up. Say so, and do not
-      // run fn: whatever we would have done is no longer protected.
-      if (!fs.existsSync(lockDir)) {
-        throw new AppError('E_MUTEX_TIMEOUT', 'Another process broke this lock while we were taking it.', {
-          hint: 'Retry. If it keeps happening, raise mutex.staleMs in .fridge/config.json',
-        });
-      }
-      throw e;
+    // Between the stamp and here, a waiter that judged us stale could have
+    // broken the lock. Detect that instead of running fn unprotected.
+    const mine = readJsonSafe(ownerFile);
+    if (!mine.ok || mine.value.nonce !== nonce) {
+      held = false;
+      throw new AppError('E_MUTEX_TIMEOUT', 'Another process broke this lock while we were taking it.', {
+        hint: 'Retry. If it keeps happening, raise mutex.staleMs in .fridge/config.json',
+      });
     }
-    return await fn();
+    const refresh = () => {
+      const until = Date.now() + RELEASE_TIMEOUT_MS;
+      for (;;) {
+        let lost = false;
+        let writeError = null;
+        const attempt = withBreakLock(lockDir, stale, () => {
+          const current = readJsonSafe(ownerFile);
+          if (!current.ok || current.value.nonce !== nonce) {
+            lost = true;
+            return false;
+          }
+          try {
+            writeJsonAtomic(ownerFile, { ...current.value, heartbeatAt: nowIso() }, ws.paths.tmp);
+            return true;
+          } catch (error) {
+            writeError = error;
+            return false;
+          }
+        });
+        if (writeError) {
+          throw new AppError('E_STATE_CORRUPT', `Could not refresh the registry lock: ${writeError.code || writeError.message}`, {
+            hint: 'Check permissions on .fridge/locks and .fridge/tmp.',
+          });
+        }
+        if (attempt.entered && attempt.value) return;
+        if (attempt.entered && lost) {
+          throw new AppError('E_MUTEX_TIMEOUT', 'Another process broke this lock while the operation was still running.', {
+            hint: 'Retry. If it keeps happening, raise mutex.staleMs in .fridge/config.json',
+          });
+        }
+        if (Date.now() >= until) {
+          throw new AppError('E_MUTEX_TIMEOUT', 'Could not refresh the registry mutex before the deadline.', {
+            hint: 'Retry, or run: fridge doctor --fix',
+          });
+        }
+        sleepSync(2);
+      }
+    };
+    return await fn(refresh);
   } finally {
     const heldMs = Date.now() - startedAt;
     release();
@@ -218,6 +331,9 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
     process.off('SIGTERM', onSignal);
     if (heldMs > ws.config.mutex.maxHoldMs) {
       process.stderr.write(`warning: held the registry mutex for ${heldMs}ms during '${op}'\n`);
+      recordLockEvent(ws, 'lock.slow', `held the registry mutex for ${heldMs}ms during '${op}'`, {
+        op, heldMs, maxHoldMs: ws.config.mutex.maxHoldMs,
+      });
     }
   }
 }

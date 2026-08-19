@@ -170,16 +170,17 @@ var conformRunners = map[string]func(raw json.RawMessage, root string) string{
 
 	"scope-overlap": func(raw json.RawMessage, _ string) string {
 		var c struct {
-			Name    string   `json:"name"`
-			A       []string `json:"a"`
-			B       []string `json:"b"`
-			Overlap bool     `json:"overlap"`
-			Reason  string   `json:"reason"`
+			Name        string   `json:"name"`
+			A           []string `json:"a"`
+			B           []string `json:"b"`
+			Overlap     bool     `json:"overlap"`
+			Reason      string   `json:"reason"`
+			Insensitive bool     `json:"insensitive"`
 		}
 		if err := json.Unmarshal(raw, &c); err != nil {
 			return "unreadable case: " + err.Error()
 		}
-		got, err := paths.ScopesOverlap(paths.Scope{Include: c.A}, paths.Scope{Include: c.B}, false)
+		got, err := paths.ScopesOverlap(paths.Scope{Include: c.A}, paths.Scope{Include: c.B}, c.Insensitive)
 		if err != nil {
 			return "overlap check errored: " + err.Error()
 		}
