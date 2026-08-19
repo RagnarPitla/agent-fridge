@@ -498,19 +498,60 @@ loop:
       writeAtomic(lockdir/owner.json, {pid, host, sessionId, op, acquiredAt})
       return active
   owner = readJsonSafe(lockdir/owner.json)
-  if owner is unreadable and lockdir age > mutex.staleMs:  break it
-  if owner.host == thisHost and not processAlive(owner.pid): break it
-  if now - owner.acquiredAt > mutex.staleMs:                break it
+  if owner is readable:
+      key = owner.host | owner.pid | owner.acquiredAt
+      if owner.host == thisHost and not processAlive(owner.pid): break it
+      if now - owner.acquiredAt > mutex.staleMs:                 break it
+  else:
+      # No readable owner. There is a real window in every acquisition
+      # between mkdir and the owner write, so this alone proves nothing.
+      if stat(lockdir) succeeds:
+          key = "unreadable@" + mtime
+          if now - mtime > mutex.staleMs: break it
+      else:
+          key = "unreadable"          # cannot judge its age at all
+      if this same key has been observed continuously for mutex.staleMs:
+          break it
   if now > deadline: fail E_MUTEX_TIMEOUT (exit 20)
   sleep(backoff)   # delay *= 1.6, capped at 250ms, with jitter
 ```
 
-"Break it" means: record a `lock.broken` note, remove `owner.json`, remove the
-directory, then continue the loop. Breaking is never silent.
+A failed `stat` MUST NOT be treated as an old timestamp. Windows fails a `stat`
+of a directory that is pending deletion, so "assume the epoch on error" turns a
+lock that is actively held into a lock that looks infinitely stale, and the
+waiter deletes it. That is how two processes end up inside the critical section
+at once, which is the failure this protocol exists to prevent. When the age
+cannot be established, the only honest answer is to keep waiting until the
+deadline, or until the same unreadable state has persisted for the whole stale
+window.
+
+"Break it" means:
+
+1. Take a second lock, `mkdir(lockdir + ".break")`. If that fails, another
+   waiter is already breaking, so return to the wait loop. A break lock older
+   than `mutex.staleMs` is itself abandoned and may be removed.
+2. Re-read `owner.json` **under that exclusion** and abandon the break unless
+   the evidence still matches `key`. Without this, two waiters can both judge
+   the same corpse, the first removes it, a third process legitimately takes
+   the lock, and the second waiter then deletes a live lock it judged in a
+   previous era.
+3. Record a `lock.broken` note. Breaking is never silent.
+4. `rename(lockdir, lockdir + ".dead-<random>")`, then remove the renamed
+   directory. Renaming makes removal a single atomic step from every other
+   process's point of view, and exactly one waiter can win the rename.
+
+If a process finds its own lock gone when it writes `owner.json`, another
+process broke it. The implementation MUST fail with `E_MUTEX_TIMEOUT` (exit 20)
+and MUST NOT run the critical section, because the section is no longer
+protected.
 
 ### 5.2 Release
 
-Release removes `owner.json` and then the directory. Release MUST be registered
+Release SHOULD `rename` the whole lock directory aside and then remove it, so
+that no waiter can observe a lock directory whose owner file has already been
+deleted. That intermediate state is indistinguishable from a crashed holder.
+Where rename is unavailable, release removes `owner.json` and then the
+directory. Release MUST be registered
 on `SIGINT`, `SIGTERM`, and normal exit, and MUST be idempotent. A release whose
 `owner.json` no longer names this process MUST NOT remove the directory, because
 another process has legitimately broken and re-acquired the lock.
@@ -816,6 +857,7 @@ silently upgrade a `0.1` directory in place.
 | I5b | Every mutating command regenerates views before returning, including on failure |
 | I6 | Exactly one process may hold the registry mutex at a time |
 | I7 | A lock held by a dead process on the same host is broken, not waited on |
+| I7b | A lock is never broken on evidence that could not be read, only on evidence that was read |
 | I8 | An expired claim is swept by the next mutating command, without a daemon |
 | I9 | A claim is never unowned during a handoff |
 | I10 | Any partially written file is invisible as a record |

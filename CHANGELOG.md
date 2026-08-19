@@ -93,6 +93,23 @@ without migration.
 
 ### Fixed
 
+- **Two processes could hold the registry mutex at once on Windows.** Caught by
+  the Windows CI job, not by a person: `TestOnlyOneHolderAtATime` reported two
+  concurrent holders. When the owner file could not be read, both
+  implementations inferred the lock's age from `stat`, and answered a failed
+  `stat` with "modified at the epoch". Windows fails `stat` on a directory that
+  is pending deletion, so a lock somebody was actively holding looked
+  infinitely stale, a waiter deleted it, and a third process then acquired it
+  cleanly. Three rules now apply in both implementations, and are written into
+  the protocol as invariant I7b: an age that cannot be read is not an age, so
+  the waiter keeps waiting; breaking is serialised behind a second lock and the
+  evidence is re-read under that exclusion, so two waiters cannot break each
+  other's freshly taken locks; and both breaking and releasing rename the
+  directory aside before removing it, so no waiter ever sees a half dismantled
+  lock. A process whose lock is broken while it is still setting up now fails
+  with `E_MUTEX_TIMEOUT` instead of running an unprotected critical section.
+  Four tests in each implementation pin this, using a seam that reproduces the
+  Windows `stat` failure on any platform.
 - **The derived door lagged behind five mutating commands.** `join`,
   `heartbeat`, `extend`, a denied `claim`, and `migrate` all wrote state
   without re-rendering the generated view, so `fridge doctor --check` reported

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 
 	"os/signal"
@@ -29,6 +30,11 @@ type Env interface {
 	MaxHoldMs() int
 	SessionID() string
 }
+
+// statLock is a seam. Windows fails a stat of a directory that is pending
+// deletion, and the only honest answer to a failed stat is "I cannot tell how
+// old this lock is", so tests need a way to produce that failure anywhere.
+var statLock = os.Stat
 
 // Options tune a single acquisition.
 type Options struct {
@@ -58,11 +64,29 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 	delay := 5
 	held := false
 
+	// What the lock looked like the first time we suspected it was dead, and
+	// when we first suspected it. A lock whose owner file cannot be read yet
+	// is not evidence of a dead process: it is the normal window between
+	// mkdir and the owner write. We only break on a suspicion that has held
+	// steady for the whole stale window.
+	suspectKey := ""
+	suspectSince := int64(0)
+
+	// release runs from both the deferred cleanup and the signal goroutine, so
+	// it has to be safe to call twice from two goroutines at once.
+	var released atomic.Bool
 	release := func() {
-		if !held {
+		if !released.CompareAndSwap(false, true) {
 			return
 		}
 		held = false
+		// Move the whole lock out of the way in one step, so a waiter never
+		// sees a live lock directory with a missing owner file.
+		dead := lockDir + ".rel-" + util.RandomToken()[:8]
+		if err := os.Rename(lockDir, dead); err == nil {
+			fsx.RmRF(dead)
+			return
+		}
 		fsx.UnlinkQuiet(ownerFile)
 		if err := os.Remove(lockDir); err != nil {
 			fsx.RmRF(lockDir)
@@ -90,18 +114,32 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 		owner, ownerOK := fsx.ReadJSONSafe(ownerFile)
 		breakIt := false
 		why := ""
+		key := ""
 		if !ownerOK {
-			var mtime int64
-			if st, e := os.Stat(lockDir); e == nil {
-				mtime = st.ModTime().UnixMilli()
+			// No readable owner. Do not guess an age from a stat we may not be
+			// able to take: on Windows, stat of a directory that is pending
+			// deletion fails, and treating that as "modified at the epoch"
+			// would break a lock somebody is actively holding.
+			key = "unreadable"
+			if st, e := statLock(lockDir); e == nil {
+				key = fmt.Sprintf("unreadable@%d", st.ModTime().UnixMilli())
+				if util.NowMs()-st.ModTime().UnixMilli() > int64(stale) {
+					breakIt = true
+					why = "unreadable-owner"
+				}
 			}
-			if util.NowMs()-mtime > int64(stale) {
-				breakIt = true
-				why = "unreadable-owner"
+			if !breakIt {
+				if key != suspectKey {
+					suspectKey, suspectSince = key, util.NowMs()
+				} else if util.NowMs()-suspectSince > int64(stale) {
+					breakIt = true
+					why = "unreadable-owner"
+				}
 			}
 		} else {
 			acquiredMs, _ := util.ParseMs(owner.Str("acquiredAt"))
 			age := util.NowMs() - acquiredMs
+			key = ownerKey(owner)
 			if owner.Str("host") == util.HostID() && !util.ProcessAlive(owner.Int("pid")) {
 				breakIt = true
 				why = "owner-process-gone"
@@ -109,16 +147,19 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 				breakIt = true
 				why = "owner-stale"
 			}
+			if suspectKey != key {
+				suspectKey, suspectSince = key, util.NowMs()
+			}
 		}
 		if breakIt {
-			if onBreak != nil {
+			if broke := breakLock(lockDir, ownerFile, key, ownerOK, stale); broke && onBreak != nil {
 				if ownerOK {
 					onBreak(why, owner)
 				} else {
 					onBreak(why, nil)
 				}
 			}
-			fsx.RmRF(lockDir)
+			suspectKey, suspectSince = "", 0
 			continue
 		}
 		if util.NowMs() >= deadline {
@@ -169,9 +210,76 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 		"sessionId":  sess,
 		"writer":     brand.Writer,
 	}, ws.TmpDir()); err != nil {
+		// The usual reason this fails is that another process judged our lock
+		// dead and broke it while we were still setting up. Say so, and do not
+		// run fn: whatever we would have done is no longer protected.
+		if !fsx.Exists(lockDir) {
+			return errs.New("E_MUTEX_TIMEOUT",
+				"Another process broke this lock while we were taking it.").
+				WithHint("Retry. If it keeps happening, raise mutex.staleMs in .fridge/config.json")
+		}
 		return err
 	}
 	return fn()
+}
+
+
+// breakLock removes a lock that a waiter has judged to be dead.
+//
+// Breaking is the one operation that can violate mutual exclusion, because a
+// waiter that deletes a lock somebody is still holding lets a second process
+// in. Two things make that safe here.
+//
+// First, breaking is itself serialised behind a second lock directory, so two
+// waiters can never be inside this function at the same time. Without that,
+// two waiters can both judge the same corpse, the first deletes it, a third
+// process legitimately takes the lock, and the second waiter then deletes a
+// live lock that it judged in a previous era.
+//
+// Second, the evidence is re-read here, under that exclusion, immediately
+// before acting. If the lock changed hands since the waiter made up its mind,
+// the break is abandoned.
+//
+// The corpse is claimed by renaming it aside rather than deleting it in place,
+// so the removal is a single atomic step from any other process's point of
+// view. It returns whether it actually broke anything.
+func breakLock(lockDir, ownerFile, key string, ownerOK bool, stale int) bool {
+	breakDir := lockDir + ".break"
+	if err := os.Mkdir(breakDir, 0o777); err != nil {
+		// Somebody else is breaking, or a breaker died holding this. Breaking
+		// takes microseconds, so a break lock older than the stale window is
+		// unambiguously abandoned. A stat we cannot take proves nothing, so in
+		// that case we simply let the caller wait and try again.
+		if st, e := statLock(breakDir); e == nil && util.NowMs()-st.ModTime().UnixMilli() > int64(stale) {
+			fsx.RmRF(breakDir)
+		}
+		return false
+	}
+	defer func() { _ = os.Remove(breakDir) }()
+
+	again, againOK := fsx.ReadJSONSafe(ownerFile)
+	if againOK != ownerOK {
+		return false
+	}
+	if againOK && ownerKey(again) != key {
+		return false
+	}
+	if !againOK && !fsx.Exists(lockDir) {
+		return false
+	}
+
+	dead := lockDir + ".dead-" + util.RandomToken()[:8]
+	if err := os.Rename(lockDir, dead); err != nil {
+		return false
+	}
+	fsx.RmRF(dead)
+	return true
+}
+
+// ownerKey identifies one specific tenancy of the lock, so a waiter can tell
+// "the holder I judged" from "whoever holds it now".
+func ownerKey(owner jsonx.Obj) string {
+	return fmt.Sprintf("%s|%d|%s", owner.Str("host"), owner.Int("pid"), owner.Str("acquiredAt"))
 }
 
 func errCode(err error) string {
