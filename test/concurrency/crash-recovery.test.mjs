@@ -17,7 +17,11 @@ test('a SIGKILLed agent leaves readable state and its card expires on schedule',
   const root = bootstrap('crash-basic', ['ghost', 'survivor']);
   try {
     const r = crash(root, 'ghost', { CRASH_TARGET: 'src/api/**', CRASH_TTL: '1s' });
-    assert.equal(r.signal, 'SIGKILL', 'the child really was killed, not asked politely');
+    // Windows has no signals; Node emulates SIGKILL with TerminateProcess, so the
+    // child reports a non-zero status and no signal. Either way it died mid-work
+    // without releasing anything, which is the condition under test.
+    const diedAbruptly = r.signal === 'SIGKILL' || (process.platform === 'win32' && r.status !== 0);
+    assert.ok(diedAbruptly, `the child really was killed, not asked politely (signal=${r.signal} status=${r.status})`);
     assert.equal(fridge(root, ['board'], { actor: 'survivor' }).code, 0, 'the board still reads');
     assert.equal(fridge(root, ['claim', 'src/api/**', '--task', 'take over'], { actor: 'survivor' }).code, 10, 'still held while the lease runs');
     wait(1400);
