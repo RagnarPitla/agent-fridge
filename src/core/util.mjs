@@ -103,6 +103,18 @@ export function processAlive(pid) {
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// A blocking sleep, for the paths that cannot await: releasing the mutex runs
+// from process exit and signal handlers, where the event loop will not turn
+// again. Atomics.wait on a buffer nobody notifies is the only real one.
+export const sleepSync = (ms) => {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch {
+    const until = Date.now() + ms;
+    while (Date.now() < until) { /* SharedArrayBuffer unavailable; spin */ }
+  }
+};
 export const jitter = (ms, ratio = 0.3) => Math.max(1, Math.round(ms * (1 + (Math.random() * 2 - 1) * ratio)));
 
 // Deterministic JSON: sorted keys, 2-space indent, trailing newline.

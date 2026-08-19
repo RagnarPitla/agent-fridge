@@ -4,13 +4,51 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { AppError } from './errors.mjs';
 import { readJsonSafe, writeJsonAtomic, rmrf, unlinkQuiet } from './fsx.mjs';
-import { hostId, jitter, nowIso, processAlive, randomToken, sleep } from './util.mjs';
+import { hostId, jitter, nowIso, processAlive, randomToken, sleep, sleepSync } from './util.mjs';
 import { WRITER } from '../brand.mjs';
 
 // A seam. Windows fails a stat of a directory that is pending deletion, and
 // the only honest answer to a failed stat is "I cannot tell how old this lock
 // is", so tests need a way to produce that failure anywhere.
-export const seams = { statLock: (p) => fs.statSync(p) };
+export const seams = {
+  statLock: (p) => fs.statSync(p),
+
+  // One attempt to take the lock directory away, reporting whether it is gone.
+  //
+  // A seam for the same reason. On Windows every operation here fails while
+  // another process has owner.json open, and waiters open it constantly:
+  // rename hits a sharing violation, the unlink hits a sharing violation, and
+  // the rmdir then fails because the directory is not empty.
+  //
+  // Renaming aside is tried first because it is atomic: no other process ever
+  // sees a lock directory whose owner file has gone missing.
+  dropLockOnce: (lockDir) => {
+    try {
+      const dead = `${lockDir}.rel-${randomToken().slice(0, 8)}`;
+      fs.renameSync(lockDir, dead);
+      rmrf(dead);
+      return true;
+    } catch { /* blocked, or already gone */ }
+    return !fs.existsSync(lockDir);
+  },
+
+  // The last resort when renaming aside keeps failing. Blocked by the same
+  // sharing violation, so a test that only models the rename is not modelling
+  // Windows. This does briefly leave a lock directory with no owner file,
+  // which is safe but costs any waiter a full stale window.
+  dismantleLockInPlace: (lockDir, ownerFile) => {
+    unlinkQuiet(ownerFile);
+    try { fs.rmdirSync(lockDir); return true; } catch { /* not empty, or blocked */ }
+    rmrf(lockDir);
+    return !fs.existsSync(lockDir);
+  },
+};
+
+// How long a release keeps trying. A release that gives up leaves a lock that
+// nobody holds and nobody can take, which stops the whole workspace until the
+// stale window expires, so it is worth being patient. In practice the handle
+// that blocks it is open for microseconds.
+const RELEASE_TIMEOUT_MS = 2000;
 
 /** Identifies one specific tenancy of the lock, so a waiter can tell "the holder I judged" from "whoever holds it now". */
 const ownerKey = (o) => `${o.host}|${o.pid}|${o.acquiredAt}`;
@@ -76,16 +114,20 @@ export async function withMutex(ws, op, fn, { timeoutMs, staleMs, onBreak } = {}
   const release = () => {
     if (!held) return;
     held = false;
-    // Move the whole lock out of the way in one step, so a waiter never sees a
-    // live lock directory with a missing owner file.
-    try {
-      const dead = `${lockDir}.rel-${randomToken().slice(0, 8)}`;
-      fs.renameSync(lockDir, dead);
-      rmrf(dead);
-      return;
-    } catch { /* fall back to taking it apart in place */ }
-    unlinkQuiet(ownerFile);
-    try { fs.rmdirSync(lockDir); } catch { rmrf(lockDir); }
+    // Keep trying. On Windows any of these operations fails while a waiter has
+    // owner.json open, and that failure clears in microseconds, but a
+    // single-shot release turns it into a lock nobody holds and nobody can
+    // take. Busy-waiting here is deliberate: release runs from process exit
+    // and signal handlers, where nothing can be awaited.
+    const deadline = Date.now() + RELEASE_TIMEOUT_MS;
+    for (;;) {
+      if (seams.dropLockOnce(lockDir, ownerFile)) return;
+      if (Date.now() >= deadline) break;
+      sleepSync(2);
+    }
+    // Still stuck. Take it apart in place; if even that fails, the lock is
+    // left for stale detection to reclaim, which is slow but never unsafe.
+    seams.dismantleLockInPlace(lockDir, ownerFile);
   };
   const onExit = () => release();
   const onSignal = (sig) => { release(); process.exit(sig === 'SIGINT' ? 130 : 143); };

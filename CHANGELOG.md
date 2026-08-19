@@ -23,6 +23,16 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
   documented first experience was an error message. The vendor is `claude`.
   Binaries are unaffected, so this does not need a new release.
 
+- A blocked release could strand every later acquirer. Releasing the registry
+  mutex tried once and gave up. On Windows every operation it can use - rename,
+  unlink, rmdir - fails with a sharing violation while any other process has
+  `owner.json` open, and waiters open it on every poll. The handle is open for
+  microseconds, but one failure left a lock directory that nobody held and
+  nobody could take until the stale window expired. In CI, one blocked release
+  stranded fifteen of sixteen workers. A release now retries for up to two
+  seconds, and only then falls back to dismantling the lock in place. New
+  protocol invariant I7c.
+
 ### Added
 
 - `test/unit/readme-quickstart.test.mjs` executes the quick start, checks that

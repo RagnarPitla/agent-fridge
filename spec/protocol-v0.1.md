@@ -556,6 +556,29 @@ on `SIGINT`, `SIGTERM`, and normal exit, and MUST be idempotent. A release whose
 `owner.json` no longer names this process MUST NOT remove the directory, because
 another process has legitimately broken and re-acquired the lock.
 
+**Release MUST retry (I7c).** Every operation a release can use may fail
+transiently for reasons that have nothing to do with the holder. On Windows,
+`rename`, `unlink` and `rmdir` all fail with a sharing violation while any
+other process has `owner.json` open, and waiters open it on every poll to see
+who is holding the lock. The handle is open for microseconds, but a release
+that tries once and gives up converts those microseconds into an outage: the
+lock directory outlives a holder that has finished, and every later acquirer
+waits out the full `staleMs` window before anyone can make progress.
+
+So a release retries until it succeeds or a bounded budget elapses (the
+reference CLI uses 2000 ms, a fixed constant rather than a config key: it
+exists to absorb a microsecond-scale handle, not to be tuned), preferring the
+atomic rename each time, and only then falls back to taking the lock apart in
+place. If even that fails, the lock is left for stale detection to reclaim.
+That is slow but never unsafe, and it is why a release is allowed to give up
+at all.
+
+The asymmetry is deliberate: a release that is too eager can never break
+mutual exclusion, because the process doing it is the one that holds the lock,
+whereas a *break* is the dangerous operation and is governed by I7b. Failing to
+release is a liveness bug; breaking wrongly is a safety bug. Retry the first,
+never guess at the second.
+
 ### 5.3 Hold discipline
 
 - The critical section MUST contain only: read the relevant records, decide,
@@ -858,6 +881,7 @@ silently upgrade a `0.1` directory in place.
 | I6 | Exactly one process may hold the registry mutex at a time |
 | I7 | A lock held by a dead process on the same host is broken, not waited on |
 | I7b | A lock is never broken on evidence that could not be read, only on evidence that was read |
+| I7c | A release retries a transient filesystem failure rather than abandoning the lock |
 | I8 | An expired claim is swept by the next mutating command, without a daemon |
 | I9 | A claim is never unowned during a handoff |
 | I10 | Any partially written file is invisible as a record |

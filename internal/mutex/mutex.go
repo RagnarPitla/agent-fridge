@@ -36,6 +36,46 @@ type Env interface {
 // old this lock is", so tests need a way to produce that failure anywhere.
 var statLock = os.Stat
 
+// dropLockOnce makes one attempt to take the lock directory away, and reports
+// whether the lock is gone afterwards.
+//
+// It is a seam for the same reason statLock is. On Windows every operation
+// here fails while another process has owner.json open, and waiters open it
+// constantly: rename hits a sharing violation, the unlink hits a sharing
+// violation, and the rmdir then fails because the directory is not empty.
+//
+// Renaming aside is tried first because it is atomic: no other process ever
+// sees a lock directory whose owner file has gone missing. Taking the lock
+// apart in place is the fallback, and does briefly produce that state, which
+// is safe but costs any waiter a full stale window.
+var dropLockOnce = func(lockDir, ownerFile string) bool {
+	dead := lockDir + ".rel-" + util.RandomToken()[:8]
+	if err := os.Rename(lockDir, dead); err == nil {
+		fsx.RmRF(dead)
+		return true
+	}
+	return !fsx.Exists(lockDir)
+}
+
+// dismantleLockInPlace is the last resort when renaming aside keeps failing.
+// It is a seam for the same reason: on Windows the sharing violation that
+// blocks the rename blocks the unlink and the rmdir too, so a test that only
+// models the rename is not modelling Windows.
+var dismantleLockInPlace = func(lockDir, ownerFile string) bool {
+	fsx.UnlinkQuiet(ownerFile)
+	if err := os.Remove(lockDir); err == nil {
+		return true
+	}
+	fsx.RmRF(lockDir)
+	return !fsx.Exists(lockDir)
+}
+
+// How long a release keeps trying. A release that gives up leaves a lock that
+// nobody holds and nobody can take, which stops the whole workspace until the
+// stale window expires, so it is worth being patient. In practice the handle
+// that blocks it is open for microseconds.
+const releaseTimeoutMs = 2000
+
 // Options tune a single acquisition.
 type Options struct {
 	TimeoutMs int
@@ -80,17 +120,24 @@ func With(ws Env, op string, fn func() error, opts *Options) error {
 			return
 		}
 		held = false
-		// Move the whole lock out of the way in one step, so a waiter never
-		// sees a live lock directory with a missing owner file.
-		dead := lockDir + ".rel-" + util.RandomToken()[:8]
-		if err := os.Rename(lockDir, dead); err == nil {
-			fsx.RmRF(dead)
-			return
+		// Keep trying. On Windows any of these operations fails while a
+		// waiter has owner.json open, and that failure clears in
+		// microseconds, but a single-shot release turns it into a lock
+		// nobody holds and nobody can take.
+		deadline := util.NowMs() + int64(releaseTimeoutMs)
+		for {
+			if dropLockOnce(lockDir, ownerFile) {
+				return
+			}
+			if util.NowMs() >= deadline {
+				break
+			}
+			util.Sleep(2)
 		}
-		fsx.UnlinkQuiet(ownerFile)
-		if err := os.Remove(lockDir); err != nil {
-			fsx.RmRF(lockDir)
-		}
+		// Still stuck after all that. Take it apart in place; if even that
+		// fails, the lock is left for stale detection to reclaim, which is
+		// slow but never unsafe.
+		dismantleLockInPlace(lockDir, ownerFile)
 	}
 
 	for !held {

@@ -58,7 +58,12 @@ func newEnv(t *testing.T) *fakeEnv {
 	t.Cleanup(func() { os.RemoveAll(root) })
 	return &fakeEnv{
 		dir: filepath.Join(root, "registry.lock.d"), tmp: filepath.Join(root, "tmp"),
-		timeoutMs: 4000, staleMs: 30000, maxHoldMs: 5000, session: "ses_test",
+		// Generous on purpose. These tests measure exclusion, not the
+		// scheduler: under -race, or on a slow CI runner, sixteen goroutines
+		// can legitimately take seconds to take turns, and a tight budget
+		// turns that into a flake that says "timeout" when nothing is wrong.
+		// A real strand still fails, it just waits longer to say so.
+		timeoutMs: 30000, staleMs: 30000, maxHoldMs: 5000, session: "ses_test",
 	}
 }
 

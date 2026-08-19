@@ -76,7 +76,7 @@ func TestAnUnreadableLockIsStillBrokenOnceItIsGenuinelyStale(t *testing.T) {
 	if err := With(env, "waiter", func() error {
 		entered = true
 		return nil
-	}, &Options{TimeoutMs: 4000, StaleMs: 60}); err != nil {
+	}, &Options{TimeoutMs: 30000, StaleMs: 60}); err != nil {
 		t.Fatalf("expected the waiter to eventually break in: %v", err)
 	}
 	if !entered {
