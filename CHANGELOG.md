@@ -86,6 +86,12 @@ regression test in both implementations.
 
 ### Changed
 
+- README now leads with the engineering problem, not the metaphor. Order is
+  hero (`Stop AI coding agents from overwriting each other's work`), the
+  problem, the solution, then the fridge-door story. The repository slug
+  `agent-fridge`, the `fridge` binary, the `.fridge/` state directory and the
+  `wcp/0.1` protocol identifier are unchanged.
+
 - `spec/protocol-v0.1.md` Section 6.3 rewritten to describe the decision
   procedure the implementations actually run, including the directory-intent
   expansion and its deliberate over-reporting, the bounded brace expansion, and

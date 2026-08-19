@@ -1,14 +1,15 @@
 # Agent Fridge
 
+### Stop AI coding agents from overwriting each other's work.
+
 <p align="center">
   <img src="./docs/assets/agent-fridge-hero.svg" alt="Agent Fridge - stop AI coding agents from overwriting each other's work" width="980">
 </p>
 
-### The shared whiteboard for AI coding agents
-
-**A fridge door for every agent in your checkout.** Path claims, leases,
-write-once notes, handoffs and a generated shared board for Claude Code, Codex,
-GitHub Copilot, Cursor, humans, and any terminal.
+**The shared whiteboard for AI coding agents.** Local path claims, leases,
+stable conflict exit codes, write-once per-participant records, and a generated
+shared board for Claude Code, Codex, GitHub Copilot, Cursor, humans, and any
+terminal.
 
 <p align="center">
   <a href="https://ragnarpitla.github.io/agent-fridge/"><strong>Read the visual story -&gt;</strong></a>
@@ -25,16 +26,17 @@ GitHub Copilot, Cursor, humans, and any terminal.
 
 Run two coding agents in one checkout and two things break at once.
 
-**They cannot see who owns what.** Agentic coding tools run in isolated terminal
-sessions. Claude Code in one terminal can see the repository, but has no idea
-that Copilot CLI in another is halfway through rewriting `src/api/`. Nothing in
-Git, and nothing in either agent's context, says "somebody is already on this."
-So they duplicate work, collide on paths, and overwrite each other's changes.
+**Agents can see the repository. They cannot see path ownership.** Agentic
+coding tools run in isolated terminal sessions. Claude Code in one terminal can
+read every file, but has no idea that Copilot CLI in another is halfway through
+rewriting `src/api/`. Nothing in Git, and nothing in either agent's context,
+says "somebody is already on this." Agents in the same checkout therefore
+duplicate work, collide on paths, and overwrite each other's changes.
 
-**The usual fix makes it worse.** The standard workaround is a shared Markdown
+**The usual fix is itself a race.** The standard workaround is a shared Markdown
 file - `STATUS.md`, `shared-development-updates.md`, a to-do list - that every
-agent reads and rewrites. That is read-modify-write on one file with concurrent
-writers, which loses work by construction. Agent B reads the file, works for ten
+agent reads and rewrites. Coordinating through one shared writer is
+read-modify-write with concurrent writers, which loses work by construction. Agent B reads the file, works for ten
 minutes, writes its version back, and everything Agent A wrote in between is
 gone. This is not hypothetical: it is [the incident this project exists because
 of](#the-actual-failure-this-prevents), where about 128 lines had to be
@@ -42,8 +44,10 @@ reconstructed by hand.
 
 ## The solution
 
-Agent Fridge adds a local coordination layer with five primitives, none of which
-any two processes ever write to the same place:
+Agent Fridge adds a local coordination layer. Before editing, each agent claims
+the paths it needs. Overlaps are refused with a stable exit code. Each
+participant writes its own records, and the readable board is generated from
+them, so no two processes ever write to the same place:
 
 | | What it gives you | Command |
 | --- | --- | --- |
@@ -58,13 +62,12 @@ record only one session owns, or is contested at exactly one named resource.
 There is no global mutable ledger, so there is nothing for two agents to
 overwrite. The readable board is generated from those records, never edited.
 
-**Think of it like a fridge door for the repo:** every housemate pins their own
-note, one magnet claims a chore, stale magnets fall off, and nobody rewrites
-somebody else's note.
-
 Local-first. Single native binary, no runtime. Works with any agent or person
 that can run a command. No daemon, cloud service, database, or mandatory MCP
 server.
+
+Once that is in place, the way it behaves has a name everybody already knows:
+[a fridge door for the repo](#the-fridge-door-story).
 
 ## What it solves, and what it does not
 
@@ -129,12 +132,12 @@ Herdr, tmux, or plain terminals.
 
 ---
 
-## The fridge-door mental model
+## The fridge-door story
 
-The agentic-engineering problem comes first. The fridge door is the memorable
+The engineering problem above comes first. The fridge door is the memorable
 mental model for how the solution behaves.
 
-The fridge door is where the household coordinates. It works because of a few
+The fridge door is where a household coordinates. It works because of a few
 unwritten rules that everybody already understands:
 
 - **Everyone pins their own note.** You do not rewrite somebody else's note to
