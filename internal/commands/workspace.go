@@ -225,7 +225,7 @@ func strArr(in []string) jsonx.Arr {
 
 func cmdVersion(ctx *Ctx) (int, error) {
 	data := jsonx.Obj{
-		"product": "Agent Fridge", "package": brand.Package, "version": brand.Version, "protocol": brand.Protocol,
+		"product": brand.Product, "package": brand.Package, "version": brand.Version, "protocol": brand.Protocol,
 		"implementation": "go", "runtime": runtime.Version(), "platform": nodePlatform(), "arch": nodeArch(),
 	}
 	return ctx.emit("version", output.Result{

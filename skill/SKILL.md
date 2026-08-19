@@ -18,7 +18,7 @@ keywords:
   - workspace
 ---
 
-# Agent Fridge
+# Agent Fridge Board
 
 One shared fridge door for every coding agent in your checkout.
 
@@ -161,7 +161,7 @@ parse instead of scraping. On failure the envelope carries `.exitCode` and
 
 ## Why it is safe to rely on
 
-Agent Fridge uses **sharded authority with a derived overview**. Every
+Agent Fridge Board uses **sharded authority with a derived overview**. Every
 authoritative write goes to a record exactly one session owns, or is contested
 at exactly one lock directory. There is no shared file that two agents append to
 or rewrite, so concurrent writes cannot clobber each other. The board you read is

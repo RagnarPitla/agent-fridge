@@ -1,6 +1,6 @@
 # Interop
 
-Where Agent Fridge runs, how to set up each environment, and where it is honestly degraded.
+Where Agent Fridge Board runs, how to set up each environment, and where it is honestly degraded.
 
 The integration surface is one process that exits with a number, so most of this
 page is short. The interesting parts are the per-shell identity setup and the
@@ -9,7 +9,7 @@ two degraded cases at the end.
 Two rules carry across every environment on this page:
 
 1. **Each participant needs its own `FRIDGE_ACTOR`,** or must pass `--agent` on
-   every command. Agent Fridge never guesses.
+   every command. Agent Fridge Board never guesses.
 2. **State is per checkout.** `.fridge/` lives beside `.git/`, so it travels
    with the repository into a container, an SSH session, or a CI runner without
    any extra configuration.
@@ -121,7 +121,7 @@ screen -r fridge
 ### Herdr-style orchestrators
 
 Any orchestrator that spawns one agent per pane, tab, or process works the same
-way, because Agent Fridge's only requirement is that each spawned agent has a
+way, because Agent Fridge Board's only requirement is that each spawned agent has a
 distinct identity. Two options:
 
 - **Per-process environment.** Set `FRIDGE_ACTOR` in the environment the
@@ -191,7 +191,7 @@ the profile from the terminal dropdown.
 
 ## Windows
 
-Agent Fridge is tested on Windows in CI. The two things that make it behave there
+Agent Fridge Board is tested on Windows in CI. The two things that make it behave there
 are deliberate: the registry mutex is built on `mkdir`, which is atomic on
 Windows as well as POSIX, and **all output is pure ASCII with no ANSI colour**,
 so a PowerShell 5.1 transcript or a CI log stays readable.
@@ -429,7 +429,7 @@ touching each call site.
 
 ## Degraded cases, stated plainly
 
-Two environments do not give Agent Fridge the guarantees it needs. Both are
+Two environments do not give Agent Fridge Board the guarantees it needs. Both are
 detected and reported rather than silently tolerated.
 
 ### Two machines sharing one checkout over NFS or SMB

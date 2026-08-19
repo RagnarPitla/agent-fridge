@@ -16,7 +16,7 @@ import {
 import { autoRender, doorDrift, renderDoor } from '../core/render.mjs';
 import { hostId, humanMs, newId, nowIso, processAlive, randomToken, sha256, slug } from '../core/util.mjs';
 import * as adapterTemplates from '../adapters/templates.mjs';
-import { BIN, PROTOCOL, STATE_DIR } from '../brand.mjs';
+import { BIN, PRODUCT, PROTOCOL, STATE_DIR } from '../brand.mjs';
 
 const open = (ctx) => openWorkspace({ repo: ctx.flags.repo, cwd: ctx.cwd });
 
@@ -359,7 +359,7 @@ export async function simulate(ctx) {
 
   const ok = invariants.every((i) => i.ok);
   const report = [
-    '# Agent Fridge concurrency simulation',
+    `# ${PRODUCT} concurrency simulation`,
     '',
     `- agents: ${agents}`,
     `- duration: ${humanMs(elapsedMs)}`,

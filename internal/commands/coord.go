@@ -740,7 +740,7 @@ func cmdSimulate(ctx *Ctx) (int, error) {
 		}
 	}
 	reportLines := []string{
-		"# Agent Fridge concurrency simulation",
+		"# " + brand.Product + " concurrency simulation",
 		"",
 		fmt.Sprintf("- agents: %d", agents),
 		fmt.Sprintf("- duration: %s", util.HumanMs(elapsedMs)),

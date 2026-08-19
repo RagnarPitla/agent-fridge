@@ -1,6 +1,6 @@
 # Concepts
 
-The six things Agent Fridge stores, what each one means, and why the design is shaped the way it is.
+The six things Agent Fridge Board stores, what each one means, and why the design is shaped the way it is.
 
 Read [./quickstart.md](./quickstart.md) first if you want to see the commands in
 use. This page explains what they are. The normative definitions live in
@@ -72,7 +72,7 @@ model provider is involved anywhere in the codebase.
 
 ### Resolution: no guessing, ever
 
-Agent Fridge decides who you are in exactly this order and stops at the first
+Agent Fridge Board decides who you are in exactly this order and stops at the first
 hit:
 
 1. `--agent <name>` on the command line
@@ -484,7 +484,7 @@ See [../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#22-git-behaviour).
 
 ## The trust boundary
 
-Agent Fridge is **cooperative and advisory**. It coordinates participants that
+Agent Fridge Board is **cooperative and advisory**. It coordinates participants that
 want to be coordinated, inside a boundary where everyone already has write
 access to the checkout. It is not a security mechanism and does not try to be:
 any process that can run `fridge` can also just write the file.
@@ -495,7 +495,7 @@ compose with Git, editors, or build tools. If you need real isolation, give each
 agent its own checkout with a Git worktree, and read
 [./comparison.md](./comparison.md), which says so honestly.
 
-What Agent Fridge does guarantee is that **cooperating participants cannot
+What Agent Fridge Board does guarantee is that **cooperating participants cannot
 destroy each other's work by accident**, which is the failure that actually
 happens. Optional hooks ([./adapters.md](./adapters.md)) narrow the gap between
 advisory and enforced, at the cost of setup. The full threat model is

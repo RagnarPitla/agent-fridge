@@ -1,4 +1,4 @@
-# ADR 0001: What Agent Fridge ships as
+# ADR 0001: What Agent Fridge Board ships as
 
 - **Status:** Accepted
 - **Date:** 2026-02-14

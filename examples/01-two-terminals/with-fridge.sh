@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
-# The same processes, the same load, through Agent Fridge.
+# The same processes, the same load, through Agent Fridge Board.
 #
 #   ./with-fridge.sh
 #

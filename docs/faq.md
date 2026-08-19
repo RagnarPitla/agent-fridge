@@ -14,7 +14,7 @@ is strictly stronger than anything an advisory protocol can offer. If your work
 decomposes onto branches and your build is cheap enough to instantiate N times,
 use worktrees and skip this project.
 
-Agent Fridge is for the case where that does not fit:
+Agent Fridge Board is for the case where that does not fit:
 
 - A 4GB `node_modules` and a 20-minute cold build, six times over.
 - Agent B needs agent A's *uncommitted* refactor right now.
@@ -24,7 +24,7 @@ Agent Fridge is for the case where that does not fit:
   fixed ports, `.env` files, database fixtures.
 
 Branches solve a different problem again: parallel *lines of development*, not
-parallel *editing of one tree*. They are better than Agent Fridge at review,
+parallel *editing of one tree*. They are better than Agent Fridge Board at review,
 revert, and bisect, and they compose with it. The branch name is recorded as a
 label on every claim.
 
@@ -32,7 +32,7 @@ label on every claim.
 
 ### What if an agent ignores the rules?
 
-Then it ignores them, and you can lose work. Agent Fridge is **advisory and
+Then it ignores them, and you can lose work. Agent Fridge Board is **advisory and
 cooperative, not enforcement**. Say that out loud before adopting it.
 
 The trust boundary is explicit
@@ -173,7 +173,7 @@ SSH. More detail in [./interop.md](./interop.md).
 
 Because colour makes the output worse in the places it is most often read.
 
-Agent Fridge emits pure ASCII with no ANSI escape sequences, ever. That is a
+Agent Fridge Board emits pure ASCII with no ANSI escape sequences, ever. That is a
 deliberate v0.1 rule, not an unfinished feature. The beneficiaries:
 
 - **Windows PowerShell 5.1**, where ANSI handling is inconsistent and a
@@ -253,11 +253,11 @@ point.
 
 ### How is this different from flock?
 
-`flock` is a good tool and Agent Fridge uses the same idea internally: its
+`flock` is a good tool and Agent Fridge Board uses the same idea internally: its
 registry mutex is a `mkdir`-based lock held for milliseconds. Claims are the
 layer above that. The differences that matter:
 
-| | `flock` | Agent Fridge claim |
+| | `flock` | Agent Fridge Board claim |
 | --- | --- | --- |
 | Granularity | one file | a path set with globs and excludes, with conservative overlap |
 | Expiry | on process exit (or never, for a lockfile) | a lease with a TTL, renewed by any command from the owner |
@@ -281,7 +281,7 @@ No, and that is fine.
 Shared coordination boards are old and well understood: blackboard architectures
 (HEARSAY-II, 1980), advisory locking as old as Unix, leases with expiry (Gray
 and Cheriton, 1989), tuple spaces (Linda, 1985), and chore charts on fridge
-doors, which predate all of it. Agent Fridge invents none of that and does not
+doors, which predate all of it. Agent Fridge Board invents none of that and does not
 claim to.
 
 Novelty is a poor thing to optimise for in a coordination primitive. You want
@@ -405,7 +405,7 @@ rm -rf .fridge
 #      .cursor/rules/agent-fridge.mdc
 #      docs/AGENT-COORDINATION.md
 
-# 3. remove the three .gitattributes lines under the "# Agent Fridge" comment
+# 3. remove the three .gitattributes lines under the "# Agent Fridge Board" comment
 
 # 4. remove the package, if you installed it
 npm uninstall agent-fridge          # or: npm uninstall -g agent-fridge
@@ -419,7 +419,7 @@ Two things to know before you do it:
 
 - **Your notes go too.** `.fridge/notes/` is committed history. If you want to
   keep it, export first: `fridge log --limit 100000 --json > coordination-history.json`.
-- **Nothing else in the repository was ever changed.** Agent Fridge never runs a
+- **Nothing else in the repository was ever changed.** Agent Fridge Board never runs a
   mutating Git command, never writes outside the workspace, and never touches
   your source files. `git status` after uninstalling shows exactly the four
   categories above and nothing else.
@@ -453,7 +453,7 @@ hint: Pass --agent <name>, or export FRIDGE_ACTOR=<name>.
 ```
 
 The resolution order is `--agent` first, then `FRIDGE_ACTOR`, then the sole
-actor if there is exactly one, then exit `7`. Agent Fridge will not guess from a
+actor if there is exactly one, then exit `7`. Agent Fridge Board will not guess from a
 pid, a tty, a parent process, or the Git author, because a wrong guess means one
 agent silently holding another agent's claim
 ([../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#9-actor-and-session-resolution)).
@@ -548,7 +548,7 @@ everything shipped stays ASCII and dependency-free.
 
 For security reports, read
 [../spec/protocol-v0.1.md](../spec/protocol-v0.1.md#12-security-and-trust-boundaries)
-first. Agent Fridge is a cooperative tool with an explicit trust boundary: "an
+first. Agent Fridge Board is a cooperative tool with an explicit trust boundary: "an
 agent could ignore a claim" and "a process with write access can write files"
 are not vulnerabilities, they are the documented model. Path traversal, symlink
 escape, a record write that lands outside the workspace, or a way to make one

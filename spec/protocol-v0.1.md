@@ -2,7 +2,7 @@
 
 Status: **Draft, stable for 0.1.x**
 Protocol identifier: `wcp/0.1`
-Reference implementation: Agent Fridge (`fridge`), Apache-2.0
+Reference implementation: Agent Fridge Board (`fridge`), Apache-2.0
 Specification license: Apache-2.0
 
 This document is normative and self-contained. It is written so that a second
@@ -149,7 +149,7 @@ Rationale:
 `fridge init` also appends to `.gitattributes`:
 
 ```
-# Agent Fridge
+# Agent Fridge Board
 .fridge/notes/** -text -merge
 .fridge/DOOR.md  linguist-generated=true
 .fridge/views/** linguist-generated=true

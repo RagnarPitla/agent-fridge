@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 840" width="1600" height="840" role="img" aria-labelledby="title desc">
-  <title id="title">Before and after Agent Fridge</title>
-  <desc id="desc">Before, two terminal agents read and rewrite one shared Markdown file, causing a stale overwrite that loses about 128 lines. After, each agent writes its own claim or note record and a generated door view loses zero notes.</desc>
+  <title id="title">Agent Fridge Board problem and solution</title>
+  <desc id="desc">Problem: concurrent AI agents cannot see file ownership and both rewrite one shared Markdown file, causing a stale overwrite that loses about 128 lines. Solution: each agent claims paths and writes separate atomic records, while a generated board loses zero notes and never rewrites another agent's state.</desc>
   <defs>
     <linearGradient id="page" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#f8fbff"/>
@@ -40,14 +40,14 @@
   </defs>
 
   <rect width="1600" height="840" rx="26" fill="url(#page)"/>
-  <text class="sans kicker" x="800" y="58" text-anchor="middle" fill="#3d6fe5">THE SAME CONCURRENT WORKLOAD</text>
-  <text class="sans heading" x="800" y="104" text-anchor="middle">Move authority out of the shared overview</text>
+  <text class="sans kicker" x="800" y="58" text-anchor="middle" fill="#3d6fe5">AGENT FRIDGE BOARD</text>
+  <text class="sans heading" x="800" y="104" text-anchor="middle">Problem: shared Markdown overwrite. Solution: atomic records and a generated board.</text>
 
   <g transform="translate(54 142)">
     <rect width="718" height="626" rx="26" fill="url(#bad)" stroke="#efc5cc" stroke-width="2"/>
-    <text class="sans kicker" x="36" y="48" fill="#b7364c">BEFORE</text>
+    <text class="sans kicker" x="36" y="48" fill="#b7364c">PROBLEM</text>
     <text class="sans heading" x="36" y="91">One shared Markdown writer</text>
-    <text class="sans body" x="36" y="126">Both agents read, work, then rewrite the same file.</text>
+    <text class="sans body" x="36" y="126">Agents cannot see ownership; both rewrite the same file.</text>
 
     <g transform="translate(36 162)" filter="url(#shadow)">
       <rect width="278" height="132" rx="16" fill="#121a2d"/>
@@ -98,9 +98,9 @@
 
   <g transform="translate(828 142)">
     <rect width="718" height="626" rx="26" fill="url(#good)" stroke="#b8dfcb" stroke-width="2"/>
-    <text class="sans kicker" x="36" y="48" fill="#107c4b">AFTER</text>
-    <text class="sans heading" x="36" y="91">Sharded notes, generated overview</text>
-    <text class="sans body" x="36" y="126">Each participant owns a record. The board is rebuilt.</text>
+    <text class="sans kicker" x="36" y="48" fill="#107c4b">SOLUTION</text>
+    <text class="sans heading" x="36" y="91">Atomic records, generated board</text>
+    <text class="sans body" x="36" y="126">Each agent claims paths and writes only its own records.</text>
 
     <g transform="translate(34 164)" filter="url(#shadow)">
       <rect width="204" height="118" rx="16" fill="#ffffff" stroke="#9fcab2"/>
@@ -155,6 +155,6 @@
 
   <g transform="translate(300 786)">
     <rect width="1000" height="38" rx="19" fill="#17233c"/>
-    <text class="sans" x="500" y="25" text-anchor="middle" font-size="17" font-weight="700" fill="#edf4ff">The fix is structural: one writer per record, then generate the human view.</text>
+    <text class="sans" x="500" y="25" text-anchor="middle" font-size="17" font-weight="700" fill="#edf4ff">No agent rewrites another agent's state: claim paths, write atomic records, generate the board.</text>
   </g>
 </svg>

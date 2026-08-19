@@ -1,11 +1,14 @@
 {
   "name": "agent-fridge",
   "version": "0.2.1",
-  "description": "A fridge door for your repo. Multiple AI agents and humans work in one Git checkout without overwriting each other. Local-first, zero dependencies, model-neutral.",
+  "description": "Agent Fridge Board is the shared whiteboard for AI coding agents. Claim paths, write atomic records, and generate the shared board without rewriting another agent's state.",
   "keywords": [
     "ai-agents",
+    "ai-coding-agents",
     "multi-agent",
     "coordination",
+    "shared-whiteboard",
+    "shared-checkout",
     "file-locking",
     "claude-code",
     "github-copilot",

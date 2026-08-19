@@ -6,7 +6,7 @@
 #
 #   .\without-fridge.ps1
 #
-# It does not use Agent Fridge at all. That is the point.
+# It does not use Agent Fridge Board at all. That is the point.
 
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path

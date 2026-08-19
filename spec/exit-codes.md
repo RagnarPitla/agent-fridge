@@ -1,5 +1,5 @@
 <!-- GENERATED FILE. Edit src/core/errors.mjs, then run: npm run gen -->
-# Agent Fridge exit codes (protocol wcp/0.1)
+# Agent Fridge Board exit codes (protocol wcp/0.1)
 
 Exit codes are the public API of `fridge`. A script may branch on them.
 They are stable for the whole 0.x line: numbers are never reused or renumbered,

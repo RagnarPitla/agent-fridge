@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 700" width="1600" height="700" role="img" aria-labelledby="title desc">
-  <title id="title">Agent Fridge protocol flow</title>
-  <desc id="desc">Shell-capable agents and humans run fridge claim, check, pin, and release. Those commands write separate authoritative records under the .fridge directory. DOOR.md is generated from those records as a rebuildable overview.</desc>
+  <title id="title">Agent Fridge Board problem, solution, and protocol flow</title>
+  <desc id="desc">Problem: concurrent AI agents cannot see file ownership and can overwrite shared Markdown. Solution: shell-capable agents and humans run fridge claim, check, pin, and release; those commands write separate atomic records under .fridge, and DOOR.md is generated as a rebuildable shared board.</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#f8fbff"/>
@@ -20,7 +20,7 @@
       .sans{font-family:"Segoe UI",Inter,system-ui,-apple-system,BlinkMacSystemFont,Arial,sans-serif}
       .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
       .kicker{font-size:17px;font-weight:800;letter-spacing:3px;fill:#3d6fe5}
-      .heading{font-size:34px;font-weight:850;fill:#17233c}
+      .heading{font-size:29px;font-weight:850;fill:#17233c}
       .panelHeading{font-size:26px;font-weight:850;fill:#17233c}
       .panelHeadingLight{font-size:26px;font-weight:850;fill:#ffffff}
       .body{font-size:19px;font-weight:550;fill:#59677f}
@@ -35,8 +35,9 @@
   </defs>
 
   <rect width="1600" height="700" rx="26" fill="url(#bg)"/>
-  <text class="sans kicker" x="800" y="52" text-anchor="middle">THE PROTOCOL IN ONE LINE</text>
-  <text class="sans heading" x="800" y="96" text-anchor="middle">Shell command in, sharded record out, generated door for everyone</text>
+  <text class="sans kicker" x="800" y="42" text-anchor="middle">AGENT FRIDGE BOARD</text>
+  <text class="sans heading" x="800" y="82" text-anchor="middle">Problem: hidden ownership and shared Markdown can silently overwrite work.</text>
+  <text class="sans heading" x="800" y="116" text-anchor="middle">Solution: path claims, atomic records, and a generated board.</text>
 
   <path d="M370 356H462" fill="none" stroke="#3d6fe5" stroke-width="5" marker-end="url(#arrow)"/>
   <path d="M794 356H882" fill="none" stroke="#3d6fe5" stroke-width="5" marker-end="url(#arrow)"/>

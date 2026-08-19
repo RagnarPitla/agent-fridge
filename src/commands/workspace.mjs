@@ -12,7 +12,7 @@ import {
 import { maybeRenew } from '../core/renew.mjs';
 import { autoRender, renderDoor } from '../core/render.mjs';
 import * as adapterTemplates from '../adapters/templates.mjs';
-import { BIN, PACKAGE, PROTOCOL, STATE_DIR, VERSION } from '../brand.mjs';
+import { BIN, PACKAGE, PRODUCT, PROTOCOL, STATE_DIR, VERSION } from '../brand.mjs';
 
 const VENDOR_VALUES = ['claude', 'copilot', 'codex', 'cursor', 'human', 'other'];
 
@@ -91,7 +91,7 @@ export async function whoami(ctx) {
 
 export async function version(ctx) {
   const data = {
-    product: 'Agent Fridge', package: PACKAGE, version: VERSION, protocol: PROTOCOL,
+    product: PRODUCT, package: PACKAGE, version: VERSION, protocol: PROTOCOL,
     implementation: 'node', runtime: process.version, platform: process.platform, arch: process.arch,
   };
   return emit(ctx, 'version', { data, text: `${PACKAGE} ${VERSION}  protocol ${PROTOCOL}  node ${process.version}  ${process.platform}/${process.arch}` });

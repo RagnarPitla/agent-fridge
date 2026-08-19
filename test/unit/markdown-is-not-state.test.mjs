@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // The load-bearing invariant of this whole project, expressed as a test.
 //
-// The incident that produced Agent Fridge was two agents doing read-modify-write
+// The incident that produced Agent Fridge Board was two agents doing read-modify-write
 // on one shared Markdown file. The fix is not "be careful with the Markdown
 // file"; the fix is that no Markdown file is ever an input to a decision.
 // Markdown here is output only: generated, disposable, and safe to delete.

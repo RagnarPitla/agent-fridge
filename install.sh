@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# Agent Fridge installer for macOS and Linux.
+# Agent Fridge Board installer for macOS and Linux.
 #
 # Downloads one static binary, verifies its checksum, and puts it on your PATH.
 # No runtime, no package manager, no post-install script, nothing written into
@@ -64,7 +64,7 @@ fetch() {
   fi
 }
 
-echo "Agent Fridge: downloading $asset ($VERSION)"
+echo "Agent Fridge Board: downloading $asset ($VERSION)"
 fetch "$base/$asset" "$tmp/$BIN" || {
   echo "install.sh: download failed. Check that a release exists at" >&2
   echo "  https://github.com/$REPO/releases" >&2
@@ -85,7 +85,7 @@ if fetch "$base/$asset.sha256" "$tmp/$BIN.sha256" 2>/dev/null; then
     echo "  got      $got" >&2
     exit 1
   fi
-  [ -n "$got" ] && echo "Agent Fridge: checksum verified"
+  [ -n "$got" ] && echo "Agent Fridge Board: checksum verified"
 else
   echo "install.sh: no published checksum for $asset, skipping verification" >&2
 fi
@@ -93,7 +93,7 @@ fi
 chmod +x "$tmp/$BIN"
 mv "$tmp/$BIN" "$DIR/$BIN"
 
-echo "Agent Fridge: installed to $DIR/$BIN"
+echo "Agent Fridge Board: installed to $DIR/$BIN"
 "$DIR/$BIN" version || true
 
 case ":$PATH:" in

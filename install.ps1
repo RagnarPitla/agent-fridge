@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 <#
 .SYNOPSIS
-  Agent Fridge installer for Windows PowerShell.
+  Agent Fridge Board installer for Windows PowerShell.
 
 .DESCRIPTION
   Downloads one static binary, verifies its checksum, and puts it on your PATH.
@@ -50,7 +50,7 @@ New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $dl = Join-Path $tmp "$bin.exe"
 
 try {
-  Write-Host "Agent Fridge: downloading $asset ($Version)"
+  Write-Host "Agent Fridge Board: downloading $asset ($Version)"
   try {
     Invoke-WebRequest -Uri "$base/$asset" -OutFile $dl -UseBasicParsing
   } catch {
@@ -72,11 +72,11 @@ try {
   } catch {
     if (-not $verified) { Write-Warning "No published checksum for $asset, skipping verification" }
   }
-  if ($verified) { Write-Host 'Agent Fridge: checksum verified' }
+  if ($verified) { Write-Host 'Agent Fridge Board: checksum verified' }
 
   $target = Join-Path $Dir "$bin.exe"
   Move-Item -Force -Path $dl -Destination $target
-  Write-Host "Agent Fridge: installed to $target"
+  Write-Host "Agent Fridge Board: installed to $target"
 
   & $target version
 

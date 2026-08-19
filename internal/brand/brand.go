@@ -5,7 +5,7 @@
 package brand
 
 const (
-	Product  = "Agent Fridge"
+	Product  = "Agent Fridge Board"
 	Package  = "agent-fridge"
 	Bin      = "fridge"
 	Version  = "0.2.1"

@@ -9,7 +9,7 @@ body:
         ran in each terminal, in what order, and what came back.
 
         If your issue is "an agent ignored a claim and edited anyway", that is a real
-        issue but it is an *adapter* problem, not a locking bug. Agent Fridge is
+        issue but it is an *adapter* problem, not a locking bug. Agent Fridge Board is
         cooperative by design. Please use the "Adapter or instructions" template.
 
         Security problems: do not file here. See SECURITY.md.

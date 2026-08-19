@@ -79,6 +79,13 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
   that every `--vendor` the docs pass to `join` is a vendor the CLI accepts.
   Documentation that is never executed is a rumour.
 
+### Changed
+
+- The public display name is now **Agent Fridge Board**, with the subtitle
+  **The shared whiteboard for AI coding agents**. The compatibility surface is
+  unchanged: the package and repository remain `agent-fridge`, the CLI remains
+  `fridge`, state remains under `.fridge/`, and the protocol remains `wcp/0.1`.
+
 ---
 
 ## [0.2.0] - 2026-02-21
@@ -135,7 +142,8 @@ without migration.
 
 ### Changed
 
-- **Renamed** from FridgeBoard to **Agent Fridge**; the package is
+- **Renamed** from the early `FridgeBoard` working name to the then-current
+  **Agent Fridge** display name; the package is
   `agent-fridge`. The binary is still `fridge`, the state directory is still
   `.fridge/`, and the protocol is still `wcp/0.1`, so nothing on disk moves.
   GitHub redirects the old repository URL.
@@ -284,15 +292,15 @@ First public release. Protocol `wcp/0.1`.
 
 - Unit, integration, and real multi-process concurrency test suites.
 - `npm run demo`: eight processes against one shared Markdown file, then the same
-  eight against `fridge pin`. The old way loses notes; Agent Fridge loses none. The
-  demo exits non-zero if a single note goes missing.
+  eight against `fridge pin`. The old way loses notes; Agent Fridge Board loses
+  none. The demo exits non-zero if a single note goes missing.
 - `npm run lint`: ASCII-only, parses, SPDX header on every shipped file.
 - `npm run gen:check`: exit-code documentation drift check.
 - CI on Linux, macOS, and Windows, on Node 20 and 22, plus a PowerShell job.
 
 ### Notes
 
-- Agent Fridge is **cooperative and advisory**. It coordinates participants that
+- Agent Fridge Board is **cooperative and advisory**. It coordinates participants that
   want to cooperate. It is not a security boundary, and `SECURITY.md` says so
   explicitly rather than implying otherwise.
 - No network, no telemetry, no daemon, no database, no required MCP server, and no
