@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-// Agent Fridge - one shared fridge door for every coding agent in your checkout.
+// Agent Fridge - stop AI coding agents from overwriting each other's work.
 package main
 
 import (

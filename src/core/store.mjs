@@ -7,7 +7,7 @@ import {
   createJsonExclusive, ensureDir, exists, listJson, readJsonSafe, walkJson, writeAtomic, writeJsonAtomic,
 } from './fsx.mjs';
 import { compactTs, hostId, newId, nowIso, processAlive, slug, stableStringify } from './util.mjs';
-import { PROTOCOL, STATE_DIR, WRITER } from '../brand.mjs';
+import { PRODUCT, PROTOCOL, STATE_DIR, WRITER } from '../brand.mjs';
 
 export const DEFAULT_CONFIG = (workspaceId) => ({
   schema: 'wcp/0.1/config',
@@ -94,7 +94,7 @@ export function openWorkspace({ repo, cwd = process.cwd(), requireInit = true } 
   return { root, paths, initialized: true, config, cwd, version: versionRaw };
 }
 
-export const GITIGNORE = `# Managed by Agent Fridge (${PROTOCOL}).
+export const GITIGNORE = `# Managed by ${PRODUCT} (${PROTOCOL}).
 # Live coordination state is machine-local. The notes wall is shared history.
 /*
 !/.gitignore
@@ -136,7 +136,7 @@ export function ensureGitAttributes(root) {
   const missing = lines.filter((l) => !current.includes(l.split(' ')[0]));
   if (!missing.length) return false;
   const next = (current && !current.endsWith('\n') ? current + '\n' : current)
-    + (current ? '\n' : '') + '# Agent Fridge\n' + missing.join('\n') + '\n';
+    + (current ? '\n' : '') + `# ${PRODUCT}\n` + missing.join('\n') + '\n';
   fs.writeFileSync(file, next);
   return true;
 }

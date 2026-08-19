@@ -1,0 +1,178 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Fridge social preview</title>
+  <desc id="desc">Agent Fridge stops AI coding agents from overwriting each other's work. Four distinct terminal lanes for Claude Code, Codex, Pi, and GitHub Copilot write separate claim, lease, and note records that feed a generated shared board. Any shell-capable CLI can participate.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07101f"/>
+      <stop offset="0.52" stop-color="#101a35"/>
+      <stop offset="1" stop-color="#151030"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#172746"/>
+      <stop offset="1" stop-color="#0c1429"/>
+    </linearGradient>
+    <linearGradient id="board" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#dbe7f8"/>
+    </linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M40 0H0V40" fill="none" stroke="#8aa4d6" stroke-width="1" opacity="0.08"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="16" stdDeviation="22" flood-color="#000000" flood-opacity="0.34"/>
+    </filter>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="7" stdDeviation="9" flood-color="#020713" flood-opacity="0.34"/>
+    </filter>
+    <style>
+      .sans{font-family:"Segoe UI",Inter,system-ui,-apple-system,BlinkMacSystemFont,Arial,sans-serif}
+      .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+      .brand{font-size:22px;font-weight:850;letter-spacing:4.5px;fill:#79d8ff}
+      .headline{font-size:46px;font-weight:850;letter-spacing:-1px;fill:#ffffff}
+      .category{font-size:22px;font-weight:700;fill:#edf5ff}
+      .label{font-size:13px;font-weight:850;letter-spacing:1.7px}
+      .body{font-size:17px;font-weight:550;fill:#b9c7e1}
+      .proof{font-size:17px;font-weight:750;fill:#eaf4ff}
+      .panelLabel{font-size:13px;font-weight:850;letter-spacing:1.5px;fill:#9eb4d9}
+      .vendor{font-size:16px;font-weight:800;fill:#ffffff}
+      .lane{font-size:15px;font-weight:700;fill:#d9e6fb}
+      .laneMeta{font-size:13px;font-weight:650;fill:#94a8ca}
+      .recordType{font-size:12px;font-weight:850;letter-spacing:1px;fill:#dce8fb}
+      .recordFile{font-size:12px;font-weight:700;fill:#91a6ca}
+      .boardLabel{font-size:12px;font-weight:850;letter-spacing:1.4px;fill:#3d6fe5}
+      .boardTitle{font-size:28px;font-weight:850;fill:#132039}
+      .boardMeta{font-size:14px;font-weight:650;fill:#52627d}
+    </style>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <circle cx="1145" cy="70" r="190" fill="#6657e8" opacity="0.15"/>
+  <circle cx="760" cy="625" r="245" fill="#22b8cf" opacity="0.09"/>
+
+  <g class="sans">
+    <text class="brand" x="64" y="76">AGENT FRIDGE</text>
+
+    <text class="headline" x="62" y="146">Stop AI coding agents</text>
+    <text class="headline" x="62" y="198">from overwriting each</text>
+    <text class="headline" x="62" y="250">other's work.</text>
+
+    <text class="category" x="64" y="306">The shared whiteboard for AI coding agents.</text>
+    <rect x="64" y="329" width="78" height="7" rx="3.5" fill="#43d17d"/>
+
+    <text class="label" x="64" y="375" fill="#79d8ff">SHARDED AUTHORITY, GENERATED OVERVIEW</text>
+    <text class="body" x="64" y="410">Each lane claims paths and writes its own atomic record.</text>
+    <text class="body" x="64" y="438">The board is generated. No shared mutable status file.</text>
+
+    <g transform="translate(64 512)">
+      <rect width="610" height="54" rx="27" fill="#172746" stroke="#38517f" stroke-width="1.5"/>
+      <circle cx="27" cy="27" r="8" fill="#43d17d"/>
+      <text class="proof" x="48" y="33">Path claims | leases | write-once notes | generated board</text>
+    </g>
+  </g>
+
+  <g transform="translate(744 48)" filter="url(#shadow)">
+    <rect width="480" height="544" rx="28" fill="url(#panel)" stroke="#38517f" stroke-width="2"/>
+    <rect x="1" y="1" width="478" height="542" rx="27" fill="none" stroke="#82a5dc" stroke-opacity="0.12"/>
+
+    <text class="sans panelLabel" x="24" y="33">FOUR LANES, SEPARATE WRITERS</text>
+    <g transform="translate(376 14)">
+      <rect width="82" height="28" rx="14" fill="#24385d" stroke="#5d7db2"/>
+      <text class="sans vendor" x="41" y="20" font-size="13" text-anchor="middle">Any CLI</text>
+    </g>
+
+    <g transform="translate(24 57)" filter="url(#cardShadow)">
+      <rect width="204" height="104" rx="16" fill="#13213d" stroke="#3f5e91"/>
+      <rect x="14" y="13" width="120" height="28" rx="14" fill="#3159aa"/>
+      <text class="sans vendor" x="74" y="33" text-anchor="middle">Claude Code</text>
+      <text class="mono lane" x="16" y="67">$ fridge claim</text>
+      <circle cx="18" cy="85" r="5" fill="#5b8cff"/>
+      <text class="sans laneMeta" x="31" y="90">review lane</text>
+      <rect x="153" y="67" width="34" height="22" rx="7" fill="#24385d"/>
+      <text class="mono laneMeta" x="170" y="82" text-anchor="middle">A</text>
+    </g>
+
+    <g transform="translate(252 57)" filter="url(#cardShadow)">
+      <rect width="204" height="104" rx="16" fill="#13213d" stroke="#574584"/>
+      <rect x="14" y="13" width="82" height="28" rx="14" fill="#7655bb"/>
+      <text class="sans vendor" x="55" y="33" text-anchor="middle">Codex</text>
+      <text class="mono lane" x="16" y="67">$ fridge claim</text>
+      <circle cx="18" cy="85" r="5" fill="#9a75e8"/>
+      <text class="sans laneMeta" x="31" y="90">build lane</text>
+      <rect x="153" y="67" width="34" height="22" rx="7" fill="#2b234a"/>
+      <text class="mono laneMeta" x="170" y="82" text-anchor="middle">B</text>
+    </g>
+
+    <g transform="translate(24 177)" filter="url(#cardShadow)">
+      <rect width="204" height="104" rx="16" fill="#13213d" stroke="#786534"/>
+      <rect x="14" y="13" width="52" height="28" rx="14" fill="#a47b1f"/>
+      <text class="sans vendor" x="40" y="33" text-anchor="middle">Pi</text>
+      <text class="mono lane" x="16" y="67">$ fridge pin</text>
+      <circle cx="18" cy="85" r="5" fill="#f2bd3f"/>
+      <text class="sans laneMeta" x="31" y="90">release lane</text>
+      <rect x="153" y="67" width="34" height="22" rx="7" fill="#403718"/>
+      <text class="mono laneMeta" x="170" y="82" text-anchor="middle">C</text>
+    </g>
+
+    <g transform="translate(252 177)" filter="url(#cardShadow)">
+      <rect width="204" height="104" rx="16" fill="#13213d" stroke="#35718a"/>
+      <rect x="14" y="13" width="156" height="28" rx="14" fill="#247891"/>
+      <text class="sans vendor" x="92" y="33" text-anchor="middle">GitHub Copilot</text>
+      <text class="mono lane" x="16" y="67">$ fridge claim</text>
+      <circle cx="18" cy="85" r="5" fill="#43c7df"/>
+      <text class="sans laneMeta" x="31" y="90">docs lane</text>
+      <rect x="153" y="67" width="34" height="22" rx="7" fill="#173b48"/>
+      <text class="mono laneMeta" x="170" y="82" text-anchor="middle">D</text>
+    </g>
+
+    <g fill="none" stroke="#7597c8" stroke-width="2" stroke-linecap="round" opacity="0.7">
+      <path d="M126 161C126 239 70 250 70 322"/>
+      <path d="M354 161C354 239 410 250 410 322"/>
+      <path d="M126 281C126 304 180 304 180 322"/>
+      <path d="M354 281C354 304 300 304 300 322"/>
+    </g>
+
+    <text class="sans panelLabel" x="24" y="312">SHARDED RECORDS - ONE WRITER EACH</text>
+
+    <g transform="translate(28 322)" filter="url(#cardShadow)">
+      <rect width="84" height="56" rx="10" fill="#1c2d4d" stroke="#4b6fa8"/>
+      <rect width="84" height="5" rx="2.5" fill="#5b8cff"/>
+      <text class="sans recordType" x="42" y="27" text-anchor="middle">CLAIM</text>
+      <text class="mono recordFile" x="42" y="45" text-anchor="middle">A.json</text>
+    </g>
+    <g transform="translate(138 322)" filter="url(#cardShadow)">
+      <rect width="84" height="56" rx="10" fill="#292040" stroke="#7155a5"/>
+      <rect width="84" height="5" rx="2.5" fill="#9a75e8"/>
+      <text class="sans recordType" x="42" y="27" text-anchor="middle">LEASE</text>
+      <text class="mono recordFile" x="42" y="45" text-anchor="middle">B.json</text>
+    </g>
+    <g transform="translate(248 322)" filter="url(#cardShadow)">
+      <rect width="84" height="56" rx="10" fill="#3c3217" stroke="#9c7c30"/>
+      <rect width="84" height="5" rx="2.5" fill="#f2bd3f"/>
+      <text class="sans recordType" x="42" y="27" text-anchor="middle">NOTE</text>
+      <text class="mono recordFile" x="42" y="45" text-anchor="middle">C.json</text>
+    </g>
+    <g transform="translate(358 322)" filter="url(#cardShadow)">
+      <rect width="84" height="56" rx="10" fill="#173643" stroke="#39859c"/>
+      <rect width="84" height="5" rx="2.5" fill="#43c7df"/>
+      <text class="sans recordType" x="42" y="27" text-anchor="middle">CLAIM</text>
+      <text class="mono recordFile" x="42" y="45" text-anchor="middle">D.json</text>
+    </g>
+
+    <g fill="none" stroke="#72e7a1" stroke-width="2.5" stroke-linecap="round" opacity="0.82">
+      <path d="M70 378V400C70 420 176 420 176 434"/>
+      <path d="M180 378V405C180 420 214 420 214 434"/>
+      <path d="M290 378V405C290 420 252 420 252 434"/>
+      <path d="M400 378V400C400 420 290 420 290 434"/>
+    </g>
+
+    <g transform="translate(62 434)" filter="url(#cardShadow)">
+      <rect width="356" height="82" rx="18" fill="url(#board)" stroke="#9eb5d4" stroke-width="2"/>
+      <circle cx="28" cy="27" r="8" fill="#43d17d"/>
+      <text class="sans boardLabel" x="46" y="31">GENERATED SHARED BOARD</text>
+      <text class="mono boardTitle" x="24" y="64">DOOR.md</text>
+      <text class="sans boardMeta" x="184" y="61">derived overview</text>
+      <rect x="328" y="20" width="7" height="44" rx="3.5" fill="#8092aa"/>
+    </g>
+  </g>
+</svg>

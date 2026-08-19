@@ -12,6 +12,30 @@ import { spawnSync } from 'node:child_process';
 import { REPO, CLI, makeRepo, cleanup } from '../helpers.mjs';
 
 const readme = () => fs.readFileSync(path.join(REPO, 'README.md'), 'utf8');
+const PAGES_URL = 'https://ragnarpitla.github.io/agent-fridge/';
+
+test('the top README CTA links to Pages and a real quickstart anchor', () => {
+  const markdown = readme();
+  const hero = markdown.indexOf('docs/assets/agent-fridge-hero.svg');
+  const heroEnd = markdown.indexOf('</p>', hero);
+  const prose = markdown.indexOf('## Stop AI coding agents from overwriting each other');
+  const pagesLink = markdown.indexOf(`href="${PAGES_URL}"`);
+  const quickstartLink = markdown.indexOf('href="#60-second-quick-start"');
+
+  assert.ok(hero >= 0 && heroEnd > hero, 'README hero markup is missing');
+  assert.ok(
+    pagesLink > heroEnd && pagesLink < prose,
+    'live-site CTA must appear directly below the hero and before the long prose',
+  );
+  assert.ok(
+    quickstartLink > heroEnd && quickstartLink < prose,
+    'quickstart CTA must appear beside the live-site CTA',
+  );
+  assert.match(markdown, /^## 60-second quick start$/m, 'quickstart anchor has no matching heading');
+
+  const pkg = JSON.parse(fs.readFileSync(path.join(REPO, 'package.json'), 'utf8'));
+  assert.equal(pkg.homepage, PAGES_URL, 'package homepage metadata must use the Pages URL');
+});
 
 /** Pull the bash blocks out of one "## " section of a Markdown file. */
 function bashBlocks(markdown, heading) {

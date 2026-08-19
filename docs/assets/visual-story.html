@@ -1,0 +1,815 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Stop AI coding agents from overwriting each other's work. Agent Fridge adds path claims, leases, write-once notes, stable conflict refusals, atomic records, and a generated shared board to any terminal.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='7' y='3' width='18' height='26' rx='4' fill='%232563eb'/%3E%3Cpath d='M9 15h14' stroke='white' stroke-width='2'/%3E%3C/svg%3E">
+  <title>Agent Fridge - Visual Story</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f3f6fb;
+      --surface: #ffffff;
+      --surface-2: #f7f9fc;
+      --text: #242b3a;
+      --muted: #5d687c;
+      --border: #dce3ee;
+      --border-strong: #c7d2e3;
+      --blue: #2563eb;
+      --blue-deep: #1746a2;
+      --blue-soft: #eaf1ff;
+      --green: #107c4b;
+      --green-soft: #eaf8f1;
+      --red: #b7364c;
+      --red-soft: #fff0f3;
+      --purple: #7753c6;
+      --ink: #0c1426;
+      --code: #111a2d;
+      --shadow: 0 16px 44px rgba(31, 48, 79, 0.11);
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 12% -6%, rgba(37, 99, 235, 0.09), transparent 26rem),
+        radial-gradient(circle at 90% 20%, rgba(119, 83, 198, 0.07), transparent 24rem),
+        var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", "Segoe UI Variable", system-ui, -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+      line-height: 1.55;
+    }
+
+    a { color: var(--blue-deep); text-underline-offset: 3px; }
+    a:hover { color: var(--blue); }
+    a:focus-visible, button:focus-visible {
+      outline: 3px solid #5b8cff;
+      outline-offset: 3px;
+    }
+
+    .skip {
+      position: absolute;
+      left: 12px;
+      top: -80px;
+      z-index: 20;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: var(--ink);
+      color: #fff;
+    }
+    .skip:focus { top: 12px; }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      border-bottom: 1px solid rgba(199, 210, 227, 0.9);
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(14px);
+    }
+    .topbar-inner {
+      width: min(1180px, calc(100% - 32px));
+      min-height: 64px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--text);
+      font-weight: 800;
+      text-decoration: none;
+      letter-spacing: -0.02em;
+    }
+    .brand-mark {
+      width: 28px;
+      height: 34px;
+      border: 2px solid var(--blue);
+      border-radius: 7px;
+      position: relative;
+      background: linear-gradient(145deg, #fff, #eaf1ff);
+    }
+    .brand-mark::after {
+      content: "";
+      position: absolute;
+      left: 5px;
+      right: 5px;
+      top: 14px;
+      height: 2px;
+      background: var(--blue);
+    }
+    nav { display: flex; min-width: 0; max-width: 100%; flex-wrap: wrap; gap: 18px; }
+    nav a {
+      color: var(--muted);
+      font-size: 0.92rem;
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    main { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
+    section { scroll-margin-top: 86px; }
+
+    .intro {
+      padding: 64px 0 38px;
+      text-align: center;
+    }
+    .eyebrow {
+      margin: 0 0 12px;
+      color: var(--blue);
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3 { line-height: 1.14; letter-spacing: -0.03em; }
+    h1 {
+      margin: 0 auto 16px;
+      max-width: 900px;
+      font-size: clamp(2.4rem, 6vw, 4.7rem);
+    }
+    h2 { margin: 0 0 14px; font-size: clamp(1.85rem, 4vw, 2.8rem); }
+    h3 { margin: 0 0 10px; font-size: 1.22rem; }
+    .lede {
+      max-width: 850px;
+      margin: 0 auto 26px;
+      color: var(--muted);
+      font-size: clamp(1.03rem, 2.4vw, 1.25rem);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      margin-bottom: 34px;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 18px;
+      border: 1px solid var(--border-strong);
+      border-radius: 9px;
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 750;
+      text-decoration: none;
+      box-shadow: 0 4px 12px rgba(31, 48, 79, 0.05);
+    }
+    .button.primary { border-color: var(--blue); background: var(--blue); color: #fff; }
+
+    .hero-frame, .visual-frame {
+      margin: 0;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+    .hero-frame img, .visual-frame img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    figcaption {
+      padding: 13px 18px 15px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.92rem;
+      text-align: left;
+    }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin: 24px 0 0;
+      text-align: left;
+    }
+    .stat {
+      padding: 18px 20px;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.88);
+    }
+    .stat strong { display: block; font-size: 1.45rem; }
+    .stat span { color: var(--muted); font-size: 0.92rem; }
+
+    .story-section { padding: 66px 0 8px; }
+    .section-head {
+      max-width: 820px;
+      margin-bottom: 24px;
+    }
+    .section-head p { margin: 0; color: var(--muted); font-size: 1.05rem; }
+    .callout {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 14px;
+      align-items: start;
+      margin-top: 20px;
+      padding: 18px 20px;
+      border: 1px solid #b9d8c7;
+      border-radius: 14px;
+      background: var(--green-soft);
+    }
+    .callout-mark {
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--green);
+      color: #fff;
+      font-weight: 850;
+    }
+    .callout p { margin: 0; color: #315d48; }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
+      margin-top: 22px;
+    }
+    .card {
+      padding: 22px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(31, 48, 79, 0.06);
+    }
+    .card p { margin: 0; color: var(--muted); }
+    .card ul { margin: 0; padding-left: 1.2rem; color: var(--muted); }
+    .card li + li { margin-top: 8px; }
+    .problem-solution {
+      max-width: 1060px;
+      margin: 0 auto 28px;
+      text-align: left;
+    }
+    .intro .mental-model {
+      max-width: 1060px;
+      margin: 0 auto 28px;
+      text-align: left;
+    }
+    .pill {
+      display: inline-flex;
+      margin-bottom: 10px;
+      padding: 4px 9px;
+      border-radius: 999px;
+      background: var(--blue-soft);
+      color: var(--blue-deep);
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .table-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      align-items: start;
+      margin-top: 22px;
+    }
+    .table-card {
+      overflow: hidden;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      background: var(--surface);
+      box-shadow: 0 8px 24px rgba(31, 48, 79, 0.05);
+    }
+    .table-card h3 { padding: 18px 20px 0; }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.92rem;
+    }
+    caption {
+      padding: 0 20px 14px;
+      color: var(--muted);
+      text-align: left;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-top: 1px solid var(--border);
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--surface-2);
+      color: #445066;
+      font-size: 0.77rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    td:first-child { font-weight: 750; }
+    .status {
+      display: inline-flex;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: var(--green-soft);
+      color: var(--green);
+      font-size: 0.78rem;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .transcript-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-top: 22px;
+    }
+    .terminal {
+      overflow: hidden;
+      border: 1px solid #2f4166;
+      border-radius: 15px;
+      background: var(--code);
+      box-shadow: var(--shadow);
+    }
+    .terminal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      min-height: 48px;
+      padding: 0 14px;
+      background: #1b2944;
+      color: #edf4ff;
+      font-size: 0.9rem;
+      font-weight: 750;
+    }
+    .terminal-dots { color: #ff7d8e; letter-spacing: 0.18em; }
+    pre {
+      margin: 0;
+      padding: 18px;
+      overflow: auto;
+      color: #c9d5eb;
+      font: 0.84rem/1.55 "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .copy {
+      border: 1px solid #58729f;
+      border-radius: 7px;
+      background: #263858;
+      color: #eaf2ff;
+      padding: 5px 9px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .board-output { margin-top: 16px; }
+    .board-output pre { max-height: 390px; }
+    .proof-note {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    code {
+      padding: 0.1em 0.34em;
+      border-radius: 5px;
+      background: #edf1f7;
+      color: #273650;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.9em;
+    }
+    pre code { padding: 0; background: none; color: inherit; }
+
+    .closing {
+      margin: 72px 0 64px;
+      padding: 34px;
+      border-radius: 20px;
+      background: linear-gradient(135deg, #102143, #171236);
+      color: #fff;
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+    .closing h2 { margin-bottom: 10px; }
+    .closing p { max-width: 760px; margin: 0 auto 22px; color: #bdcbea; }
+    .closing .button { box-shadow: none; }
+
+    footer {
+      padding: 28px 16px 42px;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      text-align: center;
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 880px) {
+      .topbar-inner { align-items: flex-start; padding: 13px 0; }
+      nav { justify-content: flex-end; gap: 10px 14px; }
+      .stat-row, .cards, .table-grid, .transcript-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 620px) {
+      .topbar { position: static; }
+      .topbar-inner { display: block; width: calc(100% - 24px); }
+      nav { display: none; }
+      .intro { padding-top: 42px; }
+      .story-section { padding-top: 50px; }
+      .stat-row { gap: 9px; }
+      .stat { padding: 14px 16px; }
+      .callout { grid-template-columns: 1fr; }
+      .closing { padding: 26px 18px; }
+      .actions .button { width: 100%; max-width: 290px; }
+      .board-output pre { max-height: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+    }
+    @media print {
+      body { background: #fff; }
+      .topbar, .actions, .copy { display: none; }
+      main { width: 100%; }
+      .hero-frame, .visual-frame, .card, .table-card, .terminal, .closing { box-shadow: none; }
+      .story-section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to the story</a>
+
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="../../README.md" aria-label="Agent Fridge README">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>Agent Fridge</span>
+      </a>
+      <nav aria-label="Visual story sections">
+        <a href="#scope">Scope</a>
+        <a href="#collision">Collision</a>
+        <a href="#workspace">Workspace</a>
+        <a href="#protocol">Protocol</a>
+        <a href="#compatibility">Compatibility</a>
+        <a href="#transcript">Transcript</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="intro" aria-labelledby="page-title">
+      <p class="eyebrow">Agent Fridge</p>
+      <h1 id="page-title">Stop AI coding agents from overwriting each other's work.</h1>
+      <p class="lede">
+        <strong>Path claims, leases, write-once notes, and a generated shared
+        board for Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and
+        any terminal.</strong>
+      </p>
+      <div class="cards problem-solution" aria-label="Problem and solution">
+        <article class="card">
+          <span class="pill">Problem</span>
+          <h3>Each terminal sees the repo, not the other editors</h3>
+          <p>
+            Agentic coding tools run in isolated terminal sessions. Each can see
+            the repository, but not who else is editing which files. In one
+            shared checkout they can duplicate work, collide on paths,
+            overwrite changes, or coordinate through one shared Markdown file
+            that becomes another race condition.
+          </p>
+        </article>
+        <article class="card">
+          <span class="pill">Solution</span>
+          <h3>Claim paths; generate the readable board</h3>
+          <p>
+            Agent Fridge adds a local coordination layer. Before editing, each
+            agent claims paths. Overlaps are refused with a stable exit code.
+            Each participant writes its own atomic records; the readable board
+            is generated from them. No daemon, cloud service, database, or
+            mandatory MCP server.
+          </p>
+        </article>
+      </div>
+      <div class="callout mental-model">
+        <span class="callout-mark" aria-hidden="true">M</span>
+        <p>
+          <strong>Think of it like a fridge door for the repo:</strong> every
+          housemate pins their own note, one magnet claims a chore, stale
+          magnets fall off, and nobody rewrites somebody else's note.
+        </p>
+      </div>
+      <div class="actions" aria-label="Project links">
+        <a class="button primary" href="https://github.com/RagnarPitla/agent-fridge">View the repository</a>
+        <a class="button" href="../quickstart.md">Run the quickstart</a>
+        <a class="button" href="../../examples/01-two-terminals/">Open the runnable demo</a>
+      </div>
+
+      <figure class="hero-frame">
+        <img src="./agent-fridge-hero.svg" alt="Agent Fridge banner led by the problem of isolated coding agents colliding in one checkout, followed by path claims, leases, atomic records, stable refusals, and a generated shared board.">
+        <figcaption>
+          Original project artwork. Vendor names are text labels, not trademark logo artwork.
+        </figcaption>
+      </figure>
+
+      <div class="stat-row" aria-label="Key story facts">
+        <div class="stat">
+          <strong>About 128 lines</strong>
+          <span>lost in the real shared Markdown overwrite</span>
+        </div>
+        <div class="stat">
+          <strong>One writer</strong>
+          <span>for each claim, lease, note, and message record</span>
+        </div>
+        <div class="stat">
+          <strong>0 notes lost</strong>
+          <span>in the concurrent sharded-record workload</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="scope" class="story-section" aria-labelledby="scope-title">
+      <div class="section-head">
+        <p class="eyebrow">Scope</p>
+        <h2 id="scope-title">What it solves / What it does not solve</h2>
+      </div>
+      <div class="cards">
+        <article class="card">
+          <span class="pill">What it solves</span>
+          <ul>
+            <li>Visible path ownership before an agent edits.</li>
+            <li>Shared Markdown write races replaced by atomic records.</li>
+            <li>One local shell contract for agents and humans.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="pill">What it does not solve</span>
+          <ul>
+            <li>Agents or processes that ignore cooperative claims.</li>
+            <li>Git branching, reviews, or merge-conflict resolution.</li>
+            <li>Scheduling, security isolation, or multi-machine locking.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="collision" class="story-section" aria-labelledby="collision-title">
+      <div class="section-head">
+        <p class="eyebrow">1. The failure</p>
+        <h2 id="collision-title">A careful agent can still overwrite another careful agent</h2>
+        <p>
+          Two real terminal agents coordinated through <code>To-do.done.md</code>
+          and <code>shared-development-updates.md</code>. Each read the shared
+          file, worked, and wrote its own copy back. One stale write erased about
+          128 lines. The bug was the shared writer, not the agents.
+        </p>
+      </div>
+      <figure class="visual-frame">
+        <img src="./before-after.svg" alt="Agent Fridge problem and solution: one shared Markdown writer loses 128 lines, while per-agent atomic records feed a generated board and lose zero notes.">
+        <figcaption>
+          The real incident and the structural fix. The repository's
+          <code>npm run demo</code> reproduces the same race with a variable loss count.
+        </figcaption>
+      </figure>
+      <div class="callout">
+        <span class="callout-mark" aria-hidden="true">1</span>
+        <p>
+          The invariant is simple: authoritative records are sharded by owner
+          and claim. <code>.fridge/DOOR.md</code> is a projection that can be
+          regenerated at any time.
+        </p>
+      </div>
+    </section>
+
+    <section id="workspace" class="story-section" aria-labelledby="workspace-title">
+      <div class="section-head">
+        <p class="eyebrow">2. The working day</p>
+        <h2 id="workspace-title">Four agents, one checkout, no mystery ownership</h2>
+        <p>
+          This sanitized mockup shows a realistic shared workspace. One agent
+          reviews PR #41, one designs the checkout flow, one builds the API for
+          PR #42, and one prepares docs and release work for PR #43. Their claims
+          stop path collisions before editing begins.
+        </p>
+      </div>
+      <figure class="visual-frame">
+        <img src="./multi-agent-workspace.svg" alt="Illustrative four-pane terminal workspace with Claude Code, GitHub Copilot, OpenAI Codex, and Pi coordinated by exact Agent Fridge claims.">
+        <figcaption>
+          Illustrative workspace with fictional project data. It can represent
+          Herdr, tmux, or four plain terminals; Agent Fridge is the coordination
+          layer, not the multiplexer.
+        </figcaption>
+      </figure>
+
+      <div class="cards" aria-label="Workspace lessons">
+        <article class="card">
+          <span class="pill">Narrow ownership</span>
+          <h3>Parallel work stays parallel</h3>
+          <p>
+            Review, product design, API work, and release documentation each
+            own distinct paths. There is no global workspace lock.
+          </p>
+        </article>
+        <article class="card">
+          <span class="pill">Explicit refusal</span>
+          <h3>A collision becomes an exit code</h3>
+          <p>
+            When the API agent asks for <code>docs/checkout-flow.md</code>,
+            the CLI exits 10 and names the current owner. No edit starts.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section id="protocol" class="story-section" aria-labelledby="protocol-title">
+      <div class="section-head">
+        <p class="eyebrow">3. The protocol</p>
+        <h2 id="protocol-title">Sharded authority, derived overview</h2>
+        <p>
+          Participants use ordinary shell commands. The CLI creates or mutates
+          the correct per-record files under <code>.fridge/</code>, then renders
+          a human-readable board from those records.
+        </p>
+      </div>
+      <figure class="visual-frame">
+        <img src="./protocol-flow.svg" alt="Protocol flow from shell-capable participants through fridge commands to sharded .fridge records and generated DOOR.md.">
+        <figcaption>
+          The command and exit code are the integration contract. No model API,
+          cloud service, daemon, or database participates.
+        </figcaption>
+      </figure>
+    </section>
+
+    <section id="compatibility" class="story-section" aria-labelledby="compatibility-title">
+      <div class="section-head">
+        <p class="eyebrow">4. Compatibility</p>
+        <h2 id="compatibility-title">If it can run a command, it can use the fridge</h2>
+        <p>
+          Adapters put the same short rules into each tool's preferred
+          instruction file. The CLI remains the source of enforcement.
+        </p>
+      </div>
+
+      <div class="table-grid">
+        <div class="table-card">
+          <h3>Agents and people</h3>
+          <div class="table-wrap">
+            <table>
+              <caption>Participation path by tool</caption>
+              <thead>
+                <tr><th>Participant</th><th>How it joins</th><th>Hooks</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Claude Code</td><td><code>CLAUDE.md</code> plus CLI</td><td>Optional</td></tr>
+                <tr><td>OpenAI Codex</td><td><code>AGENTS.md</code> or Codex adapter plus CLI</td><td>Not required</td></tr>
+                <tr><td>Pi</td><td>Generic instructions plus CLI</td><td>Not required</td></tr>
+                <tr><td>GitHub Copilot</td><td>Copilot instructions plus CLI</td><td>Not required</td></tr>
+                <tr><td>Cursor</td><td>Cursor rule plus CLI</td><td>Not required</td></tr>
+                <tr><td>Human</td><td>Shell commands or read <code>DOOR.md</code></td><td>Not required</td></tr>
+                <tr><td>Any shell tool</td><td><code>claim</code>, <code>check</code>, <code>pin</code>, <code>release</code></td><td>Not required</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="table-card">
+          <h3>Terminal surfaces</h3>
+          <div class="table-wrap">
+            <table>
+              <caption>The same per-pane identity model everywhere</caption>
+              <thead>
+                <tr><th>Environment</th><th>Identity</th><th>Status</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Plain terminal</td><td><code>FRIDGE_ACTOR</code> per shell</td><td><span class="status">Supported</span></td></tr>
+                <tr><td>tmux / screen / Zellij</td><td>One actor per pane</td><td><span class="status">Supported</span></td></tr>
+                <tr><td>Herdr</td><td>One actor per agent pane</td><td><span class="status">Supported</span></td></tr>
+                <tr><td>VS Code terminal</td><td>One actor per terminal</td><td><span class="status">Supported</span></td></tr>
+                <tr><td>CI and scripts</td><td><code>--agent</code> or environment</td><td><span class="status">Supported</span></td></tr>
+                <tr><td>macOS / Linux / Windows</td><td>Per-checkout state</td><td><span class="status">CI tested</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="transcript" class="story-section" aria-labelledby="transcript-title">
+      <div class="section-head">
+        <p class="eyebrow">5. Real CLI evidence</p>
+        <h2 id="transcript-title">Two terminals, one honest refusal</h2>
+        <p>
+          This transcript was captured from Agent Fridge 0.2.0 in a fresh local
+          Git workspace on 2026-08-19. The identifiers and timestamps are
+          run-specific. The excerpt is copied from that run; only line wrapping
+          is adjusted for the page.
+        </p>
+      </div>
+
+      <div class="transcript-grid">
+        <article class="terminal">
+          <div class="terminal-head">
+            <span><span class="terminal-dots" aria-hidden="true">o o o</span> Terminal A - Claude Code</span>
+            <button class="copy" type="button" data-copy="terminal-a">Copy</button>
+          </div>
+          <pre id="terminal-a"><code>$ fridge claim "src/api/**" --task "Review PR #41"
+Card clm_01M0DETZN98GNKRJBBYPX6M02W is yours.
+  scope    src/api/**
+  files    1
+  mode     exclusive
+  back by  15m from now
+
+When you stop:
+  fridge release clm_01M0DETZN98GNKRJBBYPX6M02W
+    --outcome done --note "what changed"</code></pre>
+        </article>
+
+        <article class="terminal">
+          <div class="terminal-head">
+            <span><span class="terminal-dots" aria-hidden="true">o o o</span> Terminal B - GitHub Copilot</span>
+            <button class="copy" type="button" data-copy="terminal-b">Copy</button>
+          </div>
+          <pre id="terminal-b"><code>$ fridge claim "src/api/routes.mjs" \
+    --task "Update route docs"
+Somebody already has that chore.
+
+  card    clm_01M0DETZN98GNKRJBBYPX6M02W
+  who     review-claude (claude)
+  mode    exclusive   doing: Review PR #41
+  scope   src/api/**
+  back by 2026-08-19T17:04:27.232Z (in 14m 59s)
+  clash   literal-prefix-nesting:
+          src/api/routes.mjs, src/api/**
+
+E_CONFLICT: 1 card(s) already cover those paths.
+[exit 10]
+
+$ fridge claim "docs/checkout-flow.md" \
+    --task "Design checkout flow"
+Card clm_01M0DETZX6S3JJHTYJ0HTBAEDA is yours.
+
+$ fridge pin "Checkout flow draft ready for review"
+pinned evt_01M0DEV011H9FJ0DHM1JPR8NRB</code></pre>
+        </article>
+      </div>
+
+      <article class="terminal board-output">
+        <div class="terminal-head">
+          <span>Generated board after both terminals proceed safely</span>
+          <button class="copy" type="button" data-copy="board-snippet">Copy</button>
+        </div>
+        <pre id="board-snippet"><code>$ fridge board
+# The door
+
+Fridge `wsp_01M0DETZBP9DJSHFZ8YQVDPANS` | 2 chore(s) claimed | 0 waiting
+
+| Card | Who | Mode | Scope | Doing | Back by |
+|---|---|---|---|---|---|
+| `clm_01M0DETZN98GNKRJBBYPX6M02W` | review-claude (claude) | exclusive | `src/api/**` | Review PR #41 | in 14m 59s |
+| `clm_01M0DETZX6S3JJHTYJ0HTBAEDA` | design-copilot (copilot) | exclusive | `docs/checkout-flow.md` | Design checkout flow | in 14m 59s |
+
+Last notes:
+- design-copilot `claim.denied` was blocked on src/api/routes.mjs
+- design-copilot `claim.acquired` took docs/checkout-flow.md
+- design-copilot `note.note` Checkout flow draft ready for review</code></pre>
+      </article>
+      <p class="proof-note">
+        The complete long-form two-terminal walkthrough is in
+        <a href="../quickstart.md">docs/quickstart.md</a>. The race harness is in
+        <a href="../../test/concurrency/nobody-erases-the-door.test.mjs">the concurrency test</a>.
+      </p>
+    </section>
+
+    <section class="closing" aria-labelledby="closing-title">
+      <h2 id="closing-title">Keep the shared checkout. Remove the shared writer.</h2>
+      <p>
+        Install the CLI from the public repository, hang the door once, give
+        each terminal an actor name, and claim paths before editing.
+      </p>
+      <div class="actions">
+        <a class="button primary" href="../../README.md#install">Install Agent Fridge</a>
+        <a class="button" href="../quickstart.md">Follow the quickstart</a>
+        <a class="button" href="../../spec/protocol-v0.1.md">Read the protocol</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Public-safe visual package for
+    <a href="https://github.com/RagnarPitla/agent-fridge">RagnarPitla/agent-fridge</a>.
+    No private screenshots, paths, source text, or official vendor logos are included.
+  </footer>
+
+  <script>
+    for (const button of document.querySelectorAll("[data-copy]")) {
+      button.addEventListener("click", async () => {
+        const target = document.getElementById(button.dataset.copy);
+        if (!target) return;
+        try {
+          await navigator.clipboard.writeText(target.innerText);
+          const original = button.textContent;
+          button.textContent = "Copied";
+          window.setTimeout(() => { button.textContent = original; }, 1400);
+        } catch {
+          button.textContent = "Select text";
+        }
+      });
+    }
+  </script>
+</body>
+</html>

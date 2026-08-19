@@ -1,16 +1,37 @@
 # Agent Fridge
 
-**One shared fridge door for every coding agent in your checkout.** Several AI
-coding agents and humans work in the same Git repository without overwriting or
-interrupting each other.
+<p align="center">
+  <img src="./docs/assets/agent-fridge-hero.svg" alt="Agent Fridge - stop AI coding agents from overwriting each other's work" width="980">
+</p>
 
-**Sharded authority, derived overview.** Every authoritative write goes to a
-record only one session owns, or is contested at exactly one named resource.
-There is no global mutable ledger, so there is nothing for two agents to
-overwrite. The readable board is generated from those records, never edited.
+<p align="center">
+  <a href="https://ragnarpitla.github.io/agent-fridge/"><strong>Read the visual story -&gt;</strong></a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#60-second-quick-start">60-second quickstart</a>
+</p>
 
-Local-first. Single native binary, no runtime. Works with any agent that can run
-a command. No daemon, no cloud service, no database, no mandatory MCP server.
+## Stop AI coding agents from overwriting each other's work.
+
+**Path claims, leases, write-once notes, and a generated shared board for
+Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any terminal.**
+
+**Problem:** Agentic coding tools run in isolated terminal sessions. Each can
+see the repository, but not who else is editing which files. In one shared
+checkout they can duplicate work, collide on paths, overwrite changes, or
+coordinate through one shared Markdown file that becomes another race
+condition.
+
+**Solution:** Agent Fridge adds a local coordination layer. Before editing,
+each agent claims paths. Overlaps are refused with a stable exit code. Each
+participant writes its own atomic records; the readable board is generated from
+them. No daemon, cloud service, database, or mandatory MCP server.
+
+**Think of it like a fridge door for the repo:** every housemate pins their own
+note, one magnet claims a chore, stale magnets fall off, and nobody rewrites
+somebody else's note.
+
+Local-first. Single native binary, no runtime. Works with any agent or person
+that can run a command.
 
 [![CI](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml/badge.svg)](https://github.com/RagnarPitla/agent-fridge/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -19,9 +40,57 @@ a command. No daemon, no cloud service, no database, no mandatory MCP server.
 
 ---
 
-## The story: a shared fridge door
+## What it solves / What it does not solve
 
-Think about a kitchen shared by a couple, a family, or four roommates.
+**What it solves**
+
+- Makes path ownership visible before an agent edits.
+- Replaces one shared Markdown writer with per-agent and per-claim atomic
+  records plus a generated overview.
+- Gives shell-capable agents and humans one local coordination contract.
+
+**What it does not solve**
+
+- It cannot stop an agent or process that ignores claims; coordination is
+  cooperative and advisory.
+- It does not replace Git branches, worktrees, reviews, or merge-conflict
+  resolution.
+- It is not a scheduler, security boundary, network lock service, or
+  multi-machine coordinator.
+
+---
+
+## See it in one minute
+
+<p align="center">
+  <img src="./docs/assets/before-after.svg" alt="Before: two agents overwrite one shared Markdown file and lose 128 lines. After: sharded Agent Fridge records generate a board with zero notes lost." width="980">
+</p>
+
+The original failure was a read-modify-write collision on shared Markdown.
+Agent Fridge replaces that shared writer with path claims and atomic
+per-agent records, then generates the shared overview.
+
+<p align="center">
+  <img src="./docs/assets/multi-agent-workspace.svg" alt="Illustrative four-agent workspace coordinated by Agent Fridge claims" width="980">
+</p>
+
+This sanitized, illustrative workspace shows a realistic day: one agent reviews
+PR #41, one designs the checkout flow, one builds the API for PR #42, and one
+prepares docs and release work for PR #43. They share one checkout while narrow
+claims stop path collisions before editing begins. The same pattern works in
+Herdr, tmux, or plain terminals.
+
+[Read the GitHub Pages article](https://ragnarpitla.github.io/agent-fridge/) |
+[Open the self-contained visual story](docs/assets/visual-story.html) |
+[Run the reproducible before/after demo](#the-actual-failure-this-prevents) |
+[Follow the two-terminal quickstart](docs/quickstart.md)
+
+---
+
+## The fridge-door mental model
+
+The agentic-engineering problem comes first. The fridge door is the memorable
+mental model for how the solution behaves.
 
 The fridge door is where the household coordinates. It works because of a few
 unwritten rules that everybody already understands:
@@ -38,8 +107,9 @@ unwritten rules that everybody already understands:
   is doing what without asking anybody.
 
 Now replace the roommates with Claude Code in one terminal, GitHub Copilot CLI
-in a second, Codex in a third, and you in a fourth. Same kitchen (one Git
-checkout), same problem, and none of the unwritten rules are enforced.
+in a second, OpenAI Codex in a third, Pi in a fourth, Cursor in a fifth, and a
+human in another shell. Same kitchen (one Git checkout), same problem, and none
+of the unwritten rules are enforced.
 
 Agent Fridge is that fridge door, made explicit and machine-checkable:
 
@@ -266,6 +336,7 @@ entire integration surface, which is why the compatibility table is boring.
 | Claude Code | `CLAUDE.md` block + CLI; optional `PreToolUse` hook | No |
 | GitHub Copilot CLI | `.github/copilot-instructions.md` block + CLI | No |
 | OpenAI Codex / Codex CLI | `AGENTS.md` block + CLI | No |
+| Pi | generic `AGENTS.md` block + CLI | No |
 | Cursor | `.cursor/rules/agent-fridge.mdc` block + CLI | No |
 | Windsurf, Cline, Aider, Continue | generic `AGENTS.md` block + CLI | No |
 | Any agent with shell access | `fridge claim` / `fridge check` | No |
@@ -663,6 +734,10 @@ the repository root cannot assert a claim and cannot block one.
 
 | Document | What is in it |
 | --- | --- |
+| [COLLABORATE.md](COLLABORATE.md) | Use Agent Fridge with people and agents |
+| [docs/assets/visual-story.html](docs/assets/visual-story.html) | Public visual walkthrough, compatibility matrix, and a real two-terminal transcript |
+| [docs/social-preview.md](docs/social-preview.md) | Maintainer steps for uploading the GitHub social preview image |
+| [docs/website.md](docs/website.md) | Preview and deploy the GitHub Pages technical publication |
 | [spec/protocol-v0.1.md](spec/protocol-v0.1.md) | The complete protocol: schemas, algorithms, invariants. Enough to reimplement in another language |
 | [spec/exit-codes.md](spec/exit-codes.md) | The exit-code contract (generated) |
 | [docs/quickstart.md](docs/quickstart.md) | A longer walkthrough with two real terminals |
@@ -677,7 +752,7 @@ the repository root cannot assert a claim and cannot block one.
 | [skill/SKILL.md](skill/SKILL.md) | The bundled, vendor-neutral Agent Skill, and [when to install it](skill/README.md) |
 | [vectors/](vectors/) | The language-neutral conformance vectors, embedded in the binary |
 | [examples/01-two-terminals/](examples/01-two-terminals/) | Runnable before/after scripts, bash and PowerShell |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to change the protocol without breaking it |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Contribute to Agent Fridge |
 | [GOVERNANCE.md](GOVERNANCE.md) | Who decides what, and how the protocol is versioned |
 | [SECURITY.md](SECURITY.md) | The trust boundary, stated plainly, and what counts as a vulnerability |
 | [CHANGELOG.md](CHANGELOG.md) | What changed, and which version of what |

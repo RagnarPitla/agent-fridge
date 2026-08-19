@@ -220,7 +220,7 @@ func Open(opts OpenOptions) (*Workspace, error) {
 }
 
 // Gitignore is the allowlist written into .fridge/.gitignore.
-var Gitignore = "# Managed by Agent Fridge (" + brand.Protocol + ").\n" +
+var Gitignore = "# Managed by " + brand.Product + " (" + brand.Protocol + ").\n" +
 	"# Live coordination state is machine-local. The notes wall is shared history.\n" +
 	"/*\n" +
 	"!/.gitignore\n" +
@@ -294,7 +294,7 @@ func EnsureGitAttributes(root string) bool {
 	if current != "" {
 		next += "\n"
 	}
-	next += "# Agent Fridge\n" + strings.Join(missing, "\n") + "\n"
+	next += "# " + brand.Product + "\n" + strings.Join(missing, "\n") + "\n"
 	if os.WriteFile(file, []byte(next), 0o666) != nil {
 		return false
 	}

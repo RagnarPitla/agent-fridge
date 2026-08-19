@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 640" width="1600" height="640" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Fridge - stop AI coding agents from overwriting each other's work</title>
+  <desc id="desc">A dark original banner led by the agentic-engineering problem: isolated coding agents cannot see file ownership and can collide or overwrite work in one checkout. It presents Agent Fridge as a local coordination layer with path claims, leases, write-once notes, stable conflict refusals, atomic records, and a generated shared board. A subtle refrigerator door visual appears only after the problem and solution.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07101f"/>
+      <stop offset="0.52" stop-color="#101a35"/>
+      <stop offset="1" stop-color="#151030"/>
+    </linearGradient>
+    <linearGradient id="door" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fbff"/>
+      <stop offset="1" stop-color="#dbe7f8"/>
+    </linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#172746"/>
+      <stop offset="1" stop-color="#0c1429"/>
+    </linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="24" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="cardShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#07101f" flood-opacity="0.22"/>
+    </filter>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M44 0H0V44" fill="none" stroke="#8aa4d6" stroke-width="1" opacity="0.09"/>
+    </pattern>
+    <style>
+      .sans{font-family:"Segoe UI",Inter,system-ui,-apple-system,BlinkMacSystemFont,Arial,sans-serif}
+      .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+      .eyebrow{font-size:18px;font-weight:800;letter-spacing:4px;fill:#79d8ff}
+      .headline{font-size:50px;font-weight:850;letter-spacing:-1.2px;fill:#ffffff}
+      .support{font-size:19px;font-weight:650;fill:#edf5ff}
+      .label{font-size:14px;font-weight:800;letter-spacing:1.6px}
+      .body{font-size:16px;font-weight:550;fill:#b9c7e1}
+      .mental{font-size:16px;font-weight:700;fill:#dce8ff}
+      .cardLabel{font-size:13px;font-weight:800;letter-spacing:1.6px}
+      .cardTitle{font-size:18px;font-weight:750;fill:#132039}
+      .cardMeta{font-size:14px;font-weight:600;fill:#52627d}
+    </style>
+  </defs>
+
+  <rect width="1600" height="640" rx="28" fill="url(#bg)"/>
+  <rect width="1600" height="640" rx="28" fill="url(#grid)"/>
+  <circle cx="1370" cy="95" r="220" fill="#6657e8" opacity="0.13"/>
+  <circle cx="1010" cy="615" r="260" fill="#22b8cf" opacity="0.09"/>
+
+  <g class="sans">
+    <text class="eyebrow" x="92" y="62">AGENT FRIDGE</text>
+    <text class="headline" x="88" y="126">Stop AI coding agents from</text>
+    <text class="headline" x="88" y="179">overwriting each other's work.</text>
+    <text class="support" x="92" y="224">Path claims, leases, write-once notes, and a generated shared board</text>
+    <text class="support" x="92" y="253">for Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any terminal.</text>
+    <rect x="92" y="272" width="76" height="7" rx="3.5" fill="#43d17d"/>
+    <text class="label" x="92" y="307" fill="#ff9dac">PROBLEM</text>
+    <text class="body" x="92" y="334">Agentic coding tools run in isolated terminal sessions. Each can see the repository,</text>
+    <text class="body" x="92" y="358">but not who else is editing which files. In one checkout they can duplicate work,</text>
+    <text class="body" x="92" y="382">collide on paths, overwrite changes, or turn shared Markdown into another race.</text>
+    <text class="label" x="92" y="421" fill="#72e7a1">SOLUTION</text>
+    <text class="body" x="92" y="448">Before editing, each agent claims paths. Overlaps are refused with a stable exit code.</text>
+    <text class="body" x="92" y="472">Each participant writes atomic records; the readable board is generated from them.</text>
+    <text class="body" x="92" y="496">No daemon, cloud service, database, or mandatory MCP server.</text>
+    <text class="label" x="92" y="548" fill="#79d8ff">THINK OF IT LIKE A FRIDGE DOOR FOR THE REPO</text>
+    <text class="mental" x="92" y="577">Each housemate pins their own note, and nobody rewrites somebody else's.</text>
+  </g>
+
+  <g transform="translate(1180 170) scale(0.58)" filter="url(#shadow)" opacity="0.78">
+    <rect x="0" y="0" width="620" height="552" rx="42" fill="#10182d" stroke="#38517f" stroke-width="2"/>
+    <rect x="26" y="24" width="568" height="504" rx="32" fill="url(#door)"/>
+    <path d="M310 24V528" stroke="#bac8da" stroke-width="3"/>
+    <rect x="285" y="184" width="10" height="178" rx="5" fill="#8193aa"/>
+    <rect x="325" y="184" width="10" height="178" rx="5" fill="#8193aa"/>
+
+    <g fill="none" stroke="#7597c8" stroke-width="3" opacity="0.58">
+      <path d="M118 131C182 118 214 134 267 168"/>
+      <path d="M112 273C186 271 210 253 270 239"/>
+      <path d="M440 142C390 149 372 174 345 210"/>
+      <path d="M463 320C407 306 379 287 346 260"/>
+      <path d="M271 168L271 390"/>
+      <path d="M345 210L345 390"/>
+    </g>
+
+    <g transform="translate(58 70) rotate(-2 105 62)" filter="url(#cardShadow)">
+      <rect width="214" height="124" rx="14" fill="#ffffff" stroke="#c6d4e8"/>
+      <circle cx="28" cy="24" r="10" fill="#5b8cff"/>
+      <text class="sans cardLabel" x="48" y="29" fill="#3d6fe5">CLAIM</text>
+      <text class="sans cardTitle" x="22" y="62">review-claude</text>
+      <text class="mono cardMeta" x="22" y="87">src/checkout/**</text>
+      <text class="sans cardMeta" x="22" y="108">Review PR #41</text>
+    </g>
+
+    <g transform="translate(56 224) rotate(2 108 58)" filter="url(#cardShadow)">
+      <rect width="218" height="118" rx="14" fill="#fff9dd" stroke="#dfcf83"/>
+      <circle cx="28" cy="24" r="10" fill="#f2bd3f"/>
+      <text class="sans cardLabel" x="48" y="29" fill="#9a7110">PIN</text>
+      <text class="sans cardTitle" x="22" y="64">Tests pass.</text>
+      <text class="sans cardMeta" x="22" y="91">Docs are ready next.</text>
+    </g>
+
+    <g transform="translate(354 78) rotate(2 98 61)" filter="url(#cardShadow)">
+      <rect width="198" height="122" rx="14" fill="#f3edff" stroke="#cbb8ee"/>
+      <circle cx="28" cy="24" r="10" fill="#9a75e8"/>
+      <text class="sans cardLabel" x="48" y="29" fill="#7753c6">CLAIM</text>
+      <text class="sans cardTitle" x="22" y="62">api-codex</text>
+      <text class="mono cardMeta" x="22" y="87">src/api/**</text>
+      <text class="sans cardMeta" x="22" y="108">Build PR #42</text>
+    </g>
+
+    <g transform="translate(354 244) rotate(-2 99 63)" filter="url(#cardShadow)">
+      <rect width="198" height="126" rx="14" fill="#ffecef" stroke="#efb8c2"/>
+      <circle cx="28" cy="24" r="10" fill="#e85a70"/>
+      <text class="sans cardLabel" x="48" y="29" fill="#b7364c">REFUSED</text>
+      <text class="sans cardTitle" x="22" y="64">Path already held</text>
+      <text class="mono cardMeta" x="22" y="91">docs/checkout...</text>
+      <text class="sans cardMeta" x="22" y="112">Exit 10, no overwrite</text>
+    </g>
+
+    <g transform="translate(172 390)" filter="url(#cardShadow)">
+      <rect width="280" height="96" rx="18" fill="url(#glass)" stroke="#5a78aa" stroke-width="2"/>
+      <circle cx="31" cy="28" r="9" fill="#43d17d"/>
+      <text class="sans cardLabel" x="50" y="33" fill="#72e7a1">GENERATED VIEW</text>
+      <text class="mono" x="24" y="69" font-size="24" font-weight="750" fill="#ffffff">.fridge/DOOR.md</text>
+    </g>
+  </g>
+</svg>

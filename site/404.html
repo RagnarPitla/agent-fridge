@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>Page not found - Agent Fridge</title>
+  <link rel="icon" href="assets/fridge-mark.svg" type="image/svg+xml">
+  <style>
+    :root {
+      color-scheme: light;
+      --cp-bg: #f7f4ef;
+      --cp-bg-elevated: #fcfbf8;
+      --cp-surface: #ffffff;
+      --cp-surface-soft: #f5f5f5;
+      --cp-border: #dedede;
+      --cp-border-strong: #919191;
+      --cp-text: #242424;
+      --cp-text-muted: #5c5c5c;
+      --cp-text-soft: #6f6f6f;
+      --cp-accent: #b11f4b;
+      --cp-accent-hover: #9a1a41;
+      --cp-accent-soft: rgba(177, 31, 75, 0.08);
+      --cp-accent-fg: #ffffff;
+      --cp-success: #16a34a;
+      --cp-danger: #dc2626;
+      --cp-warning: #f59e0b;
+      --cp-link: #0078d4;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.12);
+      --cp-overlay: rgba(255, 255, 255, 0.8);
+      --cp-panel: rgba(255, 255, 255, 0.86);
+      --cp-panel-strong: rgba(255, 255, 255, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.55);
+      --cp-highlight: rgba(177, 31, 75, 0.12);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --cp-bg: #3d3b3a;
+      --cp-bg-elevated: #343231;
+      --cp-surface: #292929;
+      --cp-surface-soft: #2e2e2e;
+      --cp-border: #474747;
+      --cp-border-strong: #5f5f5f;
+      --cp-text: #dedede;
+      --cp-text-muted: #919191;
+      --cp-text-soft: #b0b0b0;
+      --cp-accent: #fd8ea1;
+      --cp-accent-hover: #fb7b91;
+      --cp-accent-soft: rgba(253, 142, 161, 0.14);
+      --cp-accent-fg: #1a1a1a;
+      --cp-success: #4ade80;
+      --cp-danger: #f87171;
+      --cp-warning: #fbbf24;
+      --cp-link: #4da6ff;
+      --cp-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
+      --cp-overlay: rgba(41, 41, 41, 0.88);
+      --cp-panel: rgba(41, 41, 41, 0.72);
+      --cp-panel-strong: rgba(41, 41, 41, 0.96);
+      --cp-sheen: rgba(255, 255, 255, 0.04);
+      --cp-highlight: rgba(253, 142, 161, 0.12);
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      display: grid;
+      min-height: 100vh;
+      place-items: center;
+      margin: 0;
+      padding: 24px;
+      background: var(--cp-bg);
+      color: var(--cp-text);
+      font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+      line-height: 1.6;
+    }
+    main {
+      width: min(100%, 680px);
+      padding: 36px;
+      border: 1px solid var(--cp-border);
+      border-radius: 16px;
+      background: var(--cp-surface);
+      box-shadow: 0 0 2px var(--cp-border), 0 1px 2px var(--cp-border);
+      text-align: center;
+    }
+    .mark {
+      display: grid;
+      width: 64px;
+      height: 64px;
+      place-items: center;
+      margin: 0 auto 20px;
+      border: 3px solid var(--cp-accent);
+      border-radius: 16px;
+      color: var(--cp-accent);
+      font-weight: 900;
+      letter-spacing: 0.08em;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2.6rem, 10vw, 5rem);
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+    p {
+      color: var(--cp-text-muted);
+    }
+    html[data-theme="dark"] p {
+      color: var(--cp-text-soft);
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 24px;
+    }
+    a,
+    button {
+      display: inline-flex;
+      min-height: 42px;
+      align-items: center;
+      justify-content: center;
+      padding: 9px 16px;
+      border: 1px solid var(--cp-border-strong);
+      border-radius: 0.625rem;
+      background: var(--cp-surface);
+      color: var(--cp-text);
+      font: inherit;
+      font-weight: 750;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    a {
+      border-color: var(--cp-accent);
+      background: var(--cp-accent);
+      color: var(--cp-accent-fg);
+    }
+    a:hover {
+      border-color: var(--cp-accent-hover);
+      background: var(--cp-accent-hover);
+    }
+    button:hover {
+      background: var(--cp-surface-soft);
+    }
+    :focus-visible {
+      outline: 3px solid var(--cp-accent);
+      outline-offset: 3px;
+    }
+    @media (max-width: 520px) {
+      main {
+        padding: 28px 18px;
+      }
+      .actions {
+        flex-direction: column;
+      }
+      a,
+      button {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">AF</div>
+    <p>404</p>
+    <h1>This note is not on the door.</h1>
+    <p>The page may have moved, but the Agent Fridge publication is still available.</p>
+    <div class="actions">
+      <a href="/agent-fridge/" data-home>Return to Agent Fridge</a>
+      <button type="button" data-theme-toggle>Toggle theme</button>
+    </div>
+  </main>
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const toggle = document.querySelector("[data-theme-toggle]");
+      const home = document.querySelector("[data-home]");
+      if (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost") {
+        home.setAttribute("href", "/");
+      }
+      const preserveTheme = () => {
+        const param = new URL(window.location.href).searchParams.get("clawpilotTheme");
+        const target = new URL(home.getAttribute("href"), window.location.origin);
+        if (param) target.searchParams.set("clawpilotTheme", param);
+        home.setAttribute("href", `${target.pathname}${target.search}`);
+      };
+      toggle.addEventListener("click", () => {
+        const next = root.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        root.setAttribute("data-theme", next);
+        const url = new URL(window.location.href);
+        url.searchParams.set("clawpilotTheme", next);
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+        preserveTheme();
+      });
+      preserveTheme();
+    })();
+  </script>
+</body>
+</html>

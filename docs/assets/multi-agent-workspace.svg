@@ -1,0 +1,255 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1120" width="1800" height="1120" role="img" aria-labelledby="title desc">
+  <title id="title">Agent Fridge illustrative four-agent workspace</title>
+  <desc id="desc">Problem: concurrent AI agents in one checkout cannot see file ownership and shared Markdown can overwrite work. Solution: Agent Fridge shows exact path claims backed by separate atomic records and a generated board. In this sanitized fictional workspace, Claude Code reviews PR 41, GitHub Copilot designs a checkout flow, OpenAI Codex builds an API for PR 42, and Pi prepares docs and release work for PR 43. One overlapping path claim is refused.</desc>
+  <defs>
+    <linearGradient id="shell" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#08101f"/>
+      <stop offset="1" stop-color="#10172a"/>
+    </linearGradient>
+    <linearGradient id="side" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#111d34"/>
+      <stop offset="1" stop-color="#0b1427"/>
+    </linearGradient>
+    <linearGradient id="pane" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#111a2c"/>
+      <stop offset="1" stop-color="#0a1020"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="14" flood-color="#000000" flood-opacity="0.24"/>
+    </filter>
+    <style>
+      .sans{font-family:"Segoe UI",Inter,system-ui,-apple-system,BlinkMacSystemFont,Arial,sans-serif}
+      .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}
+      .topTitle{font-size:28px;font-weight:800;fill:#f1f6ff}
+      .topMeta{font-size:19px;font-weight:650;fill:#95a7c8}
+      .section{font-size:17px;font-weight:800;letter-spacing:2px;fill:#79d8ff}
+      .actor{font-size:22px;font-weight:800;fill:#ffffff}
+      .vendor{font-size:16px;font-weight:750}
+      .field{font-size:15px;font-weight:800;letter-spacing:1.2px;fill:#8092b3}
+      .value{font-size:18px;font-weight:650;fill:#d9e4f8}
+      .path{font-size:18px;font-weight:700;fill:#b8c9e8}
+      .paneTitle{font-size:21px;font-weight:800;fill:#edf4ff}
+      .paneVendor{font-size:15px;font-weight:750}
+      .term{font-size:18px;font-weight:500;fill:#c4d1e8}
+      .prompt{fill:#71dfa1}
+      .muted{fill:#8395b5}
+      .info{fill:#79d8ff}
+      .warn{fill:#ffd27a}
+      .danger{fill:#ff8fa1}
+      .success{fill:#71dfa1}
+    </style>
+  </defs>
+
+  <rect width="1800" height="1120" rx="28" fill="url(#shell)"/>
+  <rect x="22" y="22" width="1756" height="1076" rx="22" fill="#0b1222" stroke="#2b3c60" stroke-width="2"/>
+
+  <g class="sans">
+    <rect x="22" y="22" width="1756" height="68" rx="22" fill="#172139"/>
+    <rect x="22" y="68" width="1756" height="22" fill="#172139"/>
+    <circle cx="54" cy="55" r="8" fill="#ff6b7a"/>
+    <circle cx="80" cy="55" r="8" fill="#f6c85f"/>
+    <circle cx="106" cy="55" r="8" fill="#43d17d"/>
+    <text class="topTitle" x="140" y="51">Agent Fridge</text>
+    <text class="topMeta" x="140" y="77">LOCAL COORDINATION FOR AI CODING AGENTS</text>
+    <text class="topMeta" x="800" y="48">PROBLEM: hidden ownership plus shared Markdown can overwrite work</text>
+    <text class="topMeta" x="800" y="74">SOLUTION: path claims plus atomic records plus a generated board</text>
+    <text class="topMeta" x="1742" y="62" text-anchor="end">ILLUSTRATIVE WORKSPACE</text>
+  </g>
+
+  <g transform="translate(22 90)">
+    <rect width="520" height="958" fill="url(#side)"/>
+    <path d="M520 0V958" stroke="#2c3f65" stroke-width="2"/>
+    <g class="sans">
+      <text class="section" x="30" y="42">AGENT FRIDGE - CLAIMS</text>
+      <text class="topMeta" x="30" y="72">One checkout, four owners, narrow paths</text>
+
+      <g transform="translate(24 96)" filter="url(#shadow)">
+        <rect width="472" height="140" rx="16" fill="#172541" stroke="#3b5d93"/>
+        <circle cx="24" cy="28" r="9" fill="#5b8cff"/>
+        <text class="actor" x="44" y="35">review-claude</text>
+        <rect x="314" y="15" width="138" height="28" rx="14" fill="#233a64"/>
+        <text class="vendor" x="383" y="35" text-anchor="middle" fill="#a9c8ff">Claude Code</text>
+        <text class="field" x="20" y="68">PATH</text>
+        <text class="mono path" x="86" y="68">src/checkout/**</text>
+        <text class="field" x="20" y="96">TASK</text>
+        <text class="value" x="86" y="96">Review PR #41</text>
+        <text class="field" x="20" y="124">STATE</text>
+        <text class="value" x="86" y="124" fill="#79d8ff">reviewing</text>
+        <text class="field" x="320" y="124">MODE</text>
+        <text class="value" x="376" y="124">shared</text>
+      </g>
+
+      <g transform="translate(24 250)" filter="url(#shadow)">
+        <rect width="472" height="140" rx="16" fill="#172541" stroke="#3b5d93"/>
+        <circle cx="24" cy="28" r="9" fill="#35b6e8"/>
+        <text class="actor" x="44" y="35">design-copilot</text>
+        <rect x="292" y="15" width="160" height="28" rx="14" fill="#1b445b"/>
+        <text class="vendor" x="372" y="35" text-anchor="middle" fill="#a8e7ff">GitHub Copilot</text>
+        <text class="field" x="20" y="68">PATH</text>
+        <text class="mono path" x="86" y="68">docs/checkout-flow.md</text>
+        <text class="field" x="20" y="96">TASK</text>
+        <text class="value" x="86" y="96">Design checkout flow</text>
+        <text class="field" x="20" y="124">STATE</text>
+        <text class="value" x="86" y="124" fill="#71dfa1">active</text>
+        <text class="field" x="320" y="124">MODE</text>
+        <text class="value" x="376" y="124">exclusive</text>
+      </g>
+
+      <g transform="translate(24 404)" filter="url(#shadow)">
+        <rect width="472" height="140" rx="16" fill="#172541" stroke="#3b5d93"/>
+        <circle cx="24" cy="28" r="9" fill="#9a75e8"/>
+        <text class="actor" x="44" y="35">api-codex</text>
+        <rect x="313" y="15" width="139" height="28" rx="14" fill="#392b61"/>
+        <text class="vendor" x="382" y="35" text-anchor="middle" fill="#d4c1ff">OpenAI Codex</text>
+        <text class="field" x="20" y="68">PATH</text>
+        <text class="mono path" x="86" y="68">src/api/orders/**</text>
+        <text class="field" x="20" y="96">TASK</text>
+        <text class="value" x="86" y="96">Build API for PR #42</text>
+        <text class="field" x="20" y="124">STATE</text>
+        <text class="value" x="86" y="124" fill="#71dfa1">active</text>
+        <text class="field" x="320" y="124">MODE</text>
+        <text class="value" x="376" y="124">exclusive</text>
+      </g>
+
+      <g transform="translate(24 558)" filter="url(#shadow)">
+        <rect width="472" height="140" rx="16" fill="#172541" stroke="#3b5d93"/>
+        <circle cx="24" cy="28" r="9" fill="#f2bd3f"/>
+        <text class="actor" x="44" y="35">release-pi</text>
+        <rect x="367" y="15" width="85" height="28" rx="14" fill="#4d401d"/>
+        <text class="vendor" x="409" y="35" text-anchor="middle" fill="#ffe6a6">Pi</text>
+        <text class="field" x="20" y="68">PATH</text>
+        <text class="mono path" x="86" y="68">docs/release/**</text>
+        <text class="field" x="20" y="96">TASK</text>
+        <text class="value" x="86" y="96">Docs and release for PR #43</text>
+        <text class="field" x="20" y="124">STATE</text>
+        <text class="value" x="86" y="124" fill="#71dfa1">active</text>
+        <text class="field" x="320" y="124">MODE</text>
+        <text class="value" x="376" y="124">exclusive</text>
+      </g>
+
+      <g transform="translate(24 724)">
+        <rect width="472" height="124" rx="16" fill="#421d2b" stroke="#a53b55" stroke-width="2"/>
+        <rect x="18" y="16" width="106" height="27" rx="13.5" fill="#7b2940"/>
+        <text class="vendor" x="71" y="35" text-anchor="middle" fill="#ffd5dc">REFUSED 10</text>
+        <text class="value" x="18" y="68" fill="#ffd6dd">api-codex requested</text>
+        <text class="mono path" x="18" y="94" fill="#ffb8c4">docs/checkout-flow.md</text>
+        <text class="value" x="18" y="116" fill="#f3a5b3">held by design-copilot - no edit started</text>
+      </g>
+
+      <g transform="translate(24 872)">
+        <rect width="472" height="58" rx="14" fill="#102c29" stroke="#266b5b"/>
+        <circle cx="26" cy="29" r="8" fill="#43d17d"/>
+        <text class="value" x="46" y="25" fill="#bbf5d1">.fridge/DOOR.md generated</text>
+        <text class="small" x="46" y="45" fill="#82c7aa">4 claims - 1 refusal - 0 lost notes</text>
+      </g>
+    </g>
+  </g>
+
+  <g transform="translate(562 110)">
+    <g transform="translate(0 0)" filter="url(#shadow)">
+      <rect width="590" height="430" rx="17" fill="url(#pane)" stroke="#31476e" stroke-width="2"/>
+      <rect width="590" height="54" rx="17" fill="#182642"/>
+      <rect y="38" width="590" height="16" fill="#182642"/>
+      <circle cx="22" cy="27" r="7" fill="#5b8cff"/>
+      <text class="sans paneTitle" x="42" y="34">Code Review - PR #41</text>
+      <rect x="433" y="14" width="137" height="28" rx="14" fill="#233a64"/>
+      <text class="sans paneVendor" x="501" y="34" text-anchor="middle" fill="#a9c8ff">Claude Code</text>
+      <g class="mono term">
+        <text x="20" y="90" class="prompt">$ fridge check src/checkout/cart.ts</text>
+        <text x="20" y="120">yours  src/checkout/cart.ts</text>
+        <text x="20" y="158" class="prompt">$ gh pr diff 41 --name-only</text>
+        <text x="20" y="188">src/checkout/cart.ts</text>
+        <text x="20" y="214">src/checkout/totals.ts</text>
+        <text x="20" y="252" class="prompt">$ git diff --check</text>
+        <text x="20" y="282" class="success">clean</text>
+        <text x="20" y="320" class="info">Review note:</text>
+        <text x="20" y="348">- rounding path needs one boundary test</text>
+        <text x="20" y="376">- no files changed outside the claim</text>
+        <text x="20" y="406" class="muted">status: review in progress</text>
+      </g>
+    </g>
+
+    <g transform="translate(610 0)" filter="url(#shadow)">
+      <rect width="590" height="430" rx="17" fill="url(#pane)" stroke="#31476e" stroke-width="2"/>
+      <rect width="590" height="54" rx="17" fill="#182642"/>
+      <rect y="38" width="590" height="16" fill="#182642"/>
+      <circle cx="22" cy="27" r="7" fill="#35b6e8"/>
+      <text class="sans paneTitle" x="42" y="34">Product Design - checkout flow</text>
+      <rect x="411" y="14" width="159" height="28" rx="14" fill="#1b445b"/>
+      <text class="sans paneVendor" x="490" y="34" text-anchor="middle" fill="#a8e7ff">GitHub Copilot</text>
+      <g class="mono term">
+        <text x="20" y="90" class="prompt">$ fridge whoami</text>
+        <text x="20" y="120">design-copilot - 1 claim</text>
+        <text x="20" y="158" class="prompt">$ edit docs/checkout-flow.md</text>
+        <text x="20" y="188">Added:</text>
+        <text x="20" y="216">- guest and signed-in entry points</text>
+        <text x="20" y="244">- validation and recovery states</text>
+        <text x="20" y="272">- mobile confirmation sequence</text>
+        <text x="20" y="310" class="prompt">$ fridge pin "Checkout flow ready"</text>
+        <text x="20" y="340" class="success">pinned evt_design_01</text>
+        <text x="20" y="378" class="muted">path: docs/checkout-flow.md</text>
+        <text x="20" y="406" class="muted">status: active</text>
+      </g>
+    </g>
+
+    <g transform="translate(0 450)" filter="url(#shadow)">
+      <rect width="590" height="430" rx="17" fill="url(#pane)" stroke="#31476e" stroke-width="2"/>
+      <rect width="590" height="54" rx="17" fill="#182642"/>
+      <rect y="38" width="590" height="16" fill="#182642"/>
+      <circle cx="22" cy="27" r="7" fill="#9a75e8"/>
+      <text class="sans paneTitle" x="42" y="34">API Build - PR #42</text>
+      <rect x="432" y="14" width="138" height="28" rx="14" fill="#392b61"/>
+      <text class="sans paneVendor" x="501" y="34" text-anchor="middle" fill="#d4c1ff">OpenAI Codex</text>
+      <g class="mono term">
+        <text x="20" y="90" class="prompt">$ fridge claim docs/checkout-flow.md ...</text>
+        <text x="20" y="120" class="danger">E_CONFLICT: held by design-copilot</text>
+        <text x="20" y="148" class="warn">No write started. Continuing on owned path.</text>
+        <text x="20" y="188" class="prompt">$ edit src/api/orders/routes.mjs</text>
+        <text x="20" y="218">Added POST /orders validation</text>
+        <text x="20" y="248" class="prompt">$ npm test -- orders</text>
+        <text x="20" y="278" class="success">24 passed, 0 failed</text>
+        <text x="20" y="318" class="prompt">$ fridge pin "Order API tests pass"</text>
+        <text x="20" y="348" class="success">pinned evt_api_01</text>
+        <text x="20" y="386" class="muted">path: src/api/orders/**</text>
+        <text x="20" y="412" class="muted">status: active</text>
+      </g>
+    </g>
+
+    <g transform="translate(610 450)" filter="url(#shadow)">
+      <rect width="590" height="430" rx="17" fill="url(#pane)" stroke="#31476e" stroke-width="2"/>
+      <rect width="590" height="54" rx="17" fill="#182642"/>
+      <rect y="38" width="590" height="16" fill="#182642"/>
+      <circle cx="22" cy="27" r="7" fill="#f2bd3f"/>
+      <text class="sans paneTitle" x="42" y="34">Docs / Release - PR #43</text>
+      <rect x="486" y="14" width="84" height="28" rx="14" fill="#4d401d"/>
+      <text class="sans paneVendor" x="528" y="34" text-anchor="middle" fill="#ffe6a6">Pi</text>
+      <g class="mono term">
+        <text x="20" y="90" class="prompt">$ fridge check docs/release/v1.md</text>
+        <text x="20" y="120">yours  docs/release/v1.md</text>
+        <text x="20" y="158" class="prompt">$ edit docs/release/v1.md</text>
+        <text x="20" y="188">Prepared:</text>
+        <text x="20" y="216">- release notes</text>
+        <text x="20" y="244">- upgrade checklist</text>
+        <text x="20" y="272">- rollback steps</text>
+        <text x="20" y="310" class="prompt">$ fridge release clm_release_01 ...</text>
+        <text x="20" y="340" class="success">outcome: done</text>
+        <text x="20" y="378" class="muted">path: docs/release/**</text>
+        <text x="20" y="406" class="muted">status: ready for PR #43</text>
+      </g>
+    </g>
+  </g>
+
+  <g class="sans" transform="translate(562 1010)">
+    <rect width="1200" height="66" rx="16" fill="#14223a" stroke="#31476e"/>
+    <text x="28" y="29" font-size="19" font-weight="800" fill="#edf4ff">Same checkout. Separate authority.</text>
+    <text x="28" y="51" font-size="16" font-weight="650" fill="#95a7c8">Claims and atomic records feed a generated board; no agent rewrites another agent's state.</text>
+    <g transform="translate(864 16)">
+      <rect width="88" height="34" rx="17" fill="#223457"/>
+      <text x="44" y="23" text-anchor="middle" font-size="16" font-weight="750" fill="#b9cae8">Herdr</text>
+      <rect x="100" width="78" height="34" rx="17" fill="#223457"/>
+      <text x="139" y="23" text-anchor="middle" font-size="16" font-weight="750" fill="#b9cae8">tmux</text>
+      <rect x="190" width="128" height="34" rx="17" fill="#223457"/>
+      <text x="254" y="23" text-anchor="middle" font-size="16" font-weight="750" fill="#b9cae8">plain terminal</text>
+    </g>
+  </g>
+</svg>
