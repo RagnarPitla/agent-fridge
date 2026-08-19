@@ -724,6 +724,23 @@ A view is rewritten by whole-file `writeAtomic`, so concurrent renders produce
 one complete version, never an interleaved one, and a lost render is only ever
 one `fridge render` away from correct.
 
+**Invariant I5b (views are derived eagerly).** Every command that mutates
+records MUST regenerate the configured views before it returns, including the
+commands that fail. A denied `claim` still writes a `claim.denied` note, and
+`join` still writes a session and a `session.started` note, so both MUST render
+even though one of them exits non-zero.
+
+This is not cosmetic. `fridge doctor --check` reports `E_DRIFT` when the view's
+`state:` hash does not match the records, which is the signal that a human hand
+edited a generated file. If ordinary commands leave the view behind, that signal
+turns into noise and stops meaning anything. The rule is easy to state and easy
+to test: after any command, in any order, `fridge doctor --check` MUST exit `0`
+unless a human actually edited something.
+
+Implementations SHOULD render after the last write and before emitting output,
+so a caller that reads the door immediately after a command sees the effect of
+that command.
+
 ---
 
 ## 8. Exit codes
@@ -796,6 +813,7 @@ silently upgrade a `0.1` directory in place.
 | I3 | Overlap detection may over-report, never under-report |
 | I4 | No two held claims from different sessions overlap, unless both are shared |
 | I5 | Generated views are derived; deleting them loses nothing |
+| I5b | Every mutating command regenerates views before returning, including on failure |
 | I6 | Exactly one process may hold the registry mutex at a time |
 | I7 | A lock held by a dead process on the same host is broken, not waited on |
 | I8 | An expired claim is swept by the next mutating command, without a daemon |

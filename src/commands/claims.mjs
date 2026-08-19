@@ -226,6 +226,7 @@ export async function claim(ctx) {
         data: { include, waitingFor: queued.map((q) => q.claimId) },
       });
     }
+    autoRender(ws);
     if (waitMs > 0) {
       throw new AppError('E_WAIT_TIMEOUT', `Still claimed after ${humanMs(waitMs)}.`, {
         hint: `${BIN} board`,
@@ -343,6 +344,7 @@ export async function heartbeat(ctx) {
     const lease = writeLease(ws, d.claim.id, { sessionId: session.id, ttlMs: ttl, renewals: (d.lease?.renewals || 0) + 1 });
     return { claimId: d.claim.id, expiresAt: lease.expiresAt };
   });
+  autoRender(ws);
   return emit(ctx, 'heartbeat', {
     data: { renewed },
     text: `still on it: renewed ${renewed.length} card(s)\n${renewed.map((r) => `  ${r.claimId}  until ${r.expiresAt}`).join('\n')}`,
@@ -363,6 +365,7 @@ export async function extend(ctx) {
   const ttlMs = Math.min(parseDuration(ctx.flags.ttl, 'ttl'), ws.config.lease.maxTtlMs);
   saveClaim(ws, { ...d.claim, ttlMs, updatedAt: nowIso() });
   const lease = writeLease(ws, id, { sessionId: session.id, ttlMs, renewals: (d.lease?.renewals || 0) + 1 });
+  autoRender(ws);
   return emit(ctx, 'extend', { data: { claimId: id, ttlMs, expiresAt: lease.expiresAt }, text: `${id} now runs until ${lease.expiresAt}` });
 }
 

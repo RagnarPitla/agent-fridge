@@ -472,6 +472,7 @@ func cmdClaim(ctx *Ctx) (int, error) {
 				return 0, err
 			}
 		}
+		render.Auto(ws)
 		first := result.Conflicts[0].Holder.Claim
 		if waitMs > 0 {
 			return 0, errs.New("E_WAIT_TIMEOUT", fmt.Sprintf("Still claimed after %s.", util.HumanMs(waitMs))).
@@ -754,6 +755,7 @@ func cmdHeartbeat(ctx *Ctx) (int, error) {
 		renewed = append(renewed, jsonx.Obj{"claimId": d.Claim.Str("id"), "expiresAt": lease.Str("expiresAt")})
 		lines = append(lines, fmt.Sprintf("  %s  until %s", d.Claim.Str("id"), lease.Str("expiresAt")))
 	}
+	render.Auto(ws)
 	return ctx.emit("heartbeat", output.Result{
 		Data: jsonx.Obj{"renewed": renewed},
 		Text: fmt.Sprintf("still on it: renewed %d card(s)\n%s", len(renewed), strings.Join(lines, "\n")),
@@ -798,6 +800,7 @@ func cmdExtend(ctx *Ctx) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	render.Auto(ws)
 	return ctx.emit("extend", output.Result{
 		Data: jsonx.Obj{"claimId": id, "ttlMs": float64(ttlMs), "expiresAt": lease.Str("expiresAt")},
 		Text: fmt.Sprintf("%s now runs until %s", id, lease.Str("expiresAt")),

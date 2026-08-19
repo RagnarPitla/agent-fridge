@@ -158,6 +158,7 @@ func cmdJoin(ctx *Ctx) (int, error) {
 	}); err != nil {
 		return 0, err
 	}
+	render.Auto(ws)
 	resumedTag := ""
 	if res.Resumed {
 		resumedTag = " (resumed)"
@@ -654,6 +655,8 @@ func cmdMigrate(ctx *Ctx) (int, error) {
 	verb := "Imported"
 	if dryRun {
 		verb = "Would import"
+	} else {
+		render.Auto(ws)
 	}
 	rels := []string{}
 	for _, t := range targets {

@@ -199,8 +199,20 @@ jobs:
           & $fridge claim "src/api/routes.ts" --task "conflict" --agent bob
           if ($LASTEXITCODE -ne 10) { throw "expected exit 10 (E_CONFLICT), got $LASTEXITCODE" }
 
+          & $fridge pin "native binary can pin notes too" --agent bob
+          if ($LASTEXITCODE -ne 0) { throw "pin failed with $LASTEXITCODE" }
+
+          # Nothing above rendered the door by hand. Every mutating command is
+          # required to leave the derived view consistent on its own, so this
+          # must be clean without an explicit render.
           & $fridge doctor --check
           if ($LASTEXITCODE -ne 0) { throw "doctor --check reported problems: $LASTEXITCODE" }
+
+          & $fridge render
+          if ($LASTEXITCODE -ne 0) { throw "render failed with $LASTEXITCODE" }
+
+          & $fridge status --json | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "status --json failed with $LASTEXITCODE" }
           Set-Location ..
           Write-Host 'native powershell exit-code contract holds'
 

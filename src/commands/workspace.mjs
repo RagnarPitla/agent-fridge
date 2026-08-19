@@ -10,7 +10,7 @@ import {
   requireActor, resolveActorName, statePaths,
 } from '../core/store.mjs';
 import { maybeRenew } from '../core/renew.mjs';
-import { renderDoor } from '../core/render.mjs';
+import { autoRender, renderDoor } from '../core/render.mjs';
 import * as adapterTemplates from '../adapters/templates.mjs';
 import { BIN, PACKAGE, PROTOCOL, STATE_DIR, VERSION } from '../brand.mjs';
 
@@ -60,6 +60,7 @@ export async function join(ctx) {
     summary: `${name} (${vendor}) ${resumed ? 'came back to' : 'walked up to'} the fridge`,
     data: { pid: process.pid, vendor },
   });
+  autoRender(ws);
   const text = [
     `Your name is on the door: ${actor.name} (${actor.vendor})`,
     `  actor    ${actor.id}`,
@@ -265,6 +266,7 @@ export async function migrate(ctx) {
       if (!raw.startsWith('<!-- FROZEN')) writeAtomic(abs, banner + raw, ws.paths.tmp);
     }
   }
+  if (!dryRun) autoRender(ws);
   const text = [
     `${dryRun ? 'Would import' : 'Imported'} ${imported.length} entr(ies) from ${targets.map((t) => t.rel).join(', ')}.`,
     ctx.flags.freeze && !dryRun ? 'Legacy files marked FROZEN. They are now read-only history.' : '',

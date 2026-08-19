@@ -93,6 +93,15 @@ without migration.
 
 ### Fixed
 
+- **The derived door lagged behind five mutating commands.** `join`,
+  `heartbeat`, `extend`, a denied `claim`, and `migrate` all wrote state
+  without re-rendering the generated view, so `fridge doctor --check` reported
+  drift that no human had caused. `fridge init && fridge join` was enough to
+  make a pristine workspace fail its own health check. The overview is only
+  trustworthy if it is derived eagerly, so every mutating command now renders
+  before it returns, and both implementations have a test that walks a
+  workspace through the whole command surface asserting `doctor --check` stays
+  clean after each step.
 - **`simulate --duration 60s` did nothing and reported PASS.** The duration flag
   was parsed with `Number('60s')`, which is `NaN`, so the harness exited
   immediately having performed zero operations and still printed a pass. Now
