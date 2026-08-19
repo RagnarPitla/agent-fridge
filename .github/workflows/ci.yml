@@ -32,7 +32,11 @@ jobs:
           node-version: ${{ matrix.node }}
 
       - name: No dependencies to install
-        run: node -e "const p=require('./package.json');const d=Object.keys(p.dependencies||{});if(d.length){console.error('unexpected runtime dependencies: '+d.join(', '));process.exit(1)}console.log('zero runtime dependencies confirmed')"
+        run: >
+          node -e "const p=require('./package.json');
+          const d=Object.keys(p.dependencies||{});
+          if(d.length){console.error('unexpected runtime deps '+d.join(','));process.exit(1)}
+          console.log('zero runtime dependencies confirmed')"
 
       - name: Lint (ASCII, parse, SPDX)
         run: npm run lint
