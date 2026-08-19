@@ -4,6 +4,12 @@
   <img src="./docs/assets/agent-fridge-hero.svg" alt="Agent Fridge - stop AI coding agents from overwriting each other's work" width="980">
 </p>
 
+<p align="center">
+  <a href="https://ragnarpitla.github.io/agent-fridge/"><strong>Read the visual story -&gt;</strong></a>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <a href="#60-second-quick-start">60-second quickstart</a>
+</p>
+
 ## Stop AI coding agents from overwriting each other's work.
 
 **Path claims, leases, write-once notes, and a generated shared board for

@@ -6,6 +6,9 @@ GitHub Pages publishes that directory without a framework or build step.
 Expected production URL:
 <https://ragnarpitla.github.io/agent-fridge/>
 
+The same URL is recorded in the package homepage metadata and in the deployed
+site's canonical and Open Graph metadata.
+
 ## Preview locally
 
 From the repository root:
