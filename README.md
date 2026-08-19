@@ -729,6 +729,7 @@ the repository root cannot assert a claim and cannot block one.
 | --- | --- |
 | [COLLABORATE.md](COLLABORATE.md) | Use Agent Fridge with people and agents |
 | [docs/assets/visual-story.html](docs/assets/visual-story.html) | Public visual walkthrough, compatibility matrix, and a real two-terminal transcript |
+| [docs/social-preview.md](docs/social-preview.md) | Maintainer steps for uploading the GitHub social preview image |
 | [spec/protocol-v0.1.md](spec/protocol-v0.1.md) | The complete protocol: schemas, algorithms, invariants. Enough to reimplement in another language |
 | [spec/exit-codes.md](spec/exit-codes.md) | The exit-code contract (generated) |
 | [docs/quickstart.md](docs/quickstart.md) | A longer walkthrough with two real terminals |
