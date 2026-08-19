@@ -105,7 +105,8 @@ jobs:
           gh release create "$tag" \
             --title "$tag" \
             --notes-file .github/release-notes.md \
-            dist/fridge_* dist/checksums.txt dist/install.sh dist/install.ps1
+            dist/fridge_* dist/SKILL.md dist/SKILL.md.sha256 \
+            dist/checksums.txt dist/install.sh dist/install.ps1
 
       - name: Dry run summary
         if: ${{ !startsWith(github.ref, 'refs/tags/') }}

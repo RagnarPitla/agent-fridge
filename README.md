@@ -210,6 +210,19 @@ uses `/usr/local/bin` when it is writable and `~/.local/bin` otherwise, and
 `install.ps1` uses `%LOCALAPPDATA%\Programs\agent-fridge` and adds it to your
 user `PATH`.
 
+The binary performs coordination. To teach the agents in a repository to use
+it, initialize the workspace and install the instruction adapters:
+
+```bash
+cd your-repository
+fridge init
+fridge adapters install --vendor agents,claude,copilot,codex,cursor,generic
+```
+
+If your runtime supports global Agent Skills, every release also publishes a
+checksummed `SKILL.md` asset. See [`skill/README.md`](skill/README.md) for the
+GitHub Copilot CLI, Claude Code, Codex, and generic installation paths.
+
 ### Have a Go toolchain?
 
 ```bash
@@ -467,13 +480,13 @@ where the alternatives are genuinely better.
 A coordination tool can be delivered as a protocol, a CLI, a skill, an agent, a
 harness, or a plugin. We evaluated all of them
 ([ADR-0001](docs/adr/0001-distributable-form.md)) and ship a **CLI-led layered
-package**: one thing you install, four things in the box.
+package**: one release, four layers.
 
 | Layer | What it is | Why it is at this layer | Required? |
 | --- | --- | --- | --- |
 | 0 | **Versioned protocol** (`spec/protocol-v0.1.md`, protocol `wcp/0.1`) | The contract. Versioned independently of the CLI, so a second implementation can target it and a workspace can say which version wrote it. Forkable, and it outlives this repository. | Yes, it is the contract |
 | 1 | **Single native CLI** (`fridge`) | One static binary per platform, no runtime to install. Exit codes are the API. Anything that can spawn a process can participate, which is the only capability every agent, shell, and human shares. | Yes, this is what you install |
-| 2 | **Bundled open Agent Skill** ([`skill/SKILL.md`](skill/SKILL.md)) | Vendor-neutral, in the box, Apache-2.0, no vendor's format required. `fridge adapters install` splices the same canonical rules into `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, and Codex, so instructions cannot drift apart. | Recommended, and it ships with the binary |
+| 2 | **Bundled open Agent Skill** ([`skill/SKILL.md`](skill/SKILL.md)) | Vendor-neutral, Apache-2.0, no vendor's format required. Every release publishes a checksummed `SKILL.md` asset. `fridge adapters install` splices the same canonical rules into `AGENTS.md`, `CLAUDE.md`, `.github/copilot-instructions.md`, and Codex, so instructions cannot drift apart. | Recommended, and available in every release |
 | 3 | **Conformance and race harness** (`fridge conform`, `vectors/*.json`, `fridge simulate`) | The thing that makes layer 0 real. A language-neutral vector suite plus a real multi-process race harness, so any implementation in any language can prove it conforms without reading our source. | Yes, it ships in the package |
 | 4 | **Optional adapters**: MCP server, `PreToolUse` hooks, pre-commit, tmux, Herdr | Better discovery or genuine enforcement where a vendor supports it. Every one of them is a thin shell over layer 1 and adds no semantics of its own. | Optional, always |
 

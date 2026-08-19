@@ -39,6 +39,9 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
 - The README described `--dir` and `--version` for both installers. The
   PowerShell one takes `-Dir` and `-Version`, and defaults to a different
   directory. The sample `fridge version` output did not match the real output.
+- The global skill instructions tried to read a `skillPath` field from
+  `fridge version --json`, but that field does not exist. They now install the
+  checksummed skill asset published with each release.
 - The `v0.1.0` GitHub release advertised a preview under the former name with
   no downloadable assets. Retitled and re-noted so it says so. `v0.2.0` now
   carries a note about the liveness bug fixed in `v0.2.1`.
@@ -50,6 +53,8 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
   automated check.
 - Two guard tests: no document may promise an npm registry install while the
   package is unpublished, and no tracked file may link to the old repository.
+- `SKILL.md` and `SKILL.md.sha256` as first-class release assets. The skill uses
+  strict, portable front matter with exactly `name` and `description`.
 
 ---
 
