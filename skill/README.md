@@ -1,8 +1,9 @@
 # The bundled Agent Skill
 
-[`SKILL.md`](SKILL.md) is the vendor-neutral, open Agent Skill that ships in the
-box with the `fridge` binary. Apache-2.0, no vendor's proprietary format, no
-account, no registry.
+[`SKILL.md`](SKILL.md) is the vendor-neutral, open Agent Skill published with
+every Agent Fridge release. Apache-2.0, no vendor's proprietary format, no
+account, no registry. It is a separate, checksummed release asset rather than
+an opaque file hidden inside the `fridge` binary.
 
 It is layer 2 of the [package](../README.md#what-ships-and-why-it-is-shaped-this-way),
 and it holds no behaviour that is not already in the protocol. A skill that knows
@@ -13,26 +14,55 @@ the problem this project exists to remove.
 
 ## Installing it
 
-### Any agent that reads a Markdown skill file
+### From the latest release
 
-Copy or symlink the directory. Most runtimes look for `SKILL.md` in a skills
-folder:
+Pick the skills directory for the runtime you use:
+
+| Runtime | Destination |
+| --- | --- |
+| GitHub Copilot CLI | `~/.copilot/skills/agent-fridge` |
+| Claude Code | `~/.claude/skills/agent-fridge` |
+| Codex | `~/.codex/skills/agent-fridge` |
+| Generic Agent Skills directory | `~/.config/agent-skills/agent-fridge` |
+
+macOS or Linux:
 
 ```sh
-mkdir -p ~/.config/agent-skills/agent-fridge
-cp "$(fridge version --json | grep -o '"skillPath":"[^"]*"' | cut -d'"' -f4)/SKILL.md" \
-   ~/.config/agent-skills/agent-fridge/
+DEST="$HOME/.copilot/skills/agent-fridge" # choose a destination from the table
+mkdir -p "$DEST"
+curl -fsSL https://github.com/RagnarPitla/agent-fridge/releases/latest/download/SKILL.md \
+  -o "$DEST/SKILL.md"
+curl -fsSL https://github.com/RagnarPitla/agent-fridge/releases/latest/download/SKILL.md.sha256 \
+  -o "$DEST/SKILL.md.sha256"
+(cd "$DEST" && if command -v shasum >/dev/null 2>&1; then
+  shasum -a 256 -c SKILL.md.sha256
+else
+  sha256sum -c SKILL.md.sha256
+fi)
 ```
 
-Or simply, from a checkout:
+Windows PowerShell:
+
+```powershell
+$dest = Join-Path $HOME '.copilot\skills\agent-fridge' # choose a destination from the table
+New-Item -ItemType Directory -Force -Path $dest | Out-Null
+$base = 'https://github.com/RagnarPitla/agent-fridge/releases/latest/download'
+Invoke-WebRequest "$base/SKILL.md" -OutFile (Join-Path $dest 'SKILL.md')
+Invoke-WebRequest "$base/SKILL.md.sha256" -OutFile (Join-Path $dest 'SKILL.md.sha256')
+$want = ((Get-Content (Join-Path $dest 'SKILL.md.sha256') -Raw) -split '\s+')[0]
+$got = (Get-FileHash -Algorithm SHA256 (Join-Path $dest 'SKILL.md')).Hash.ToLower()
+if ($want.ToLower() -ne $got) { throw 'SKILL.md checksum mismatch' }
+```
+
+Or copy it from a checkout:
 
 ```sh
 cp -r skill/ ~/.config/agent-skills/agent-fridge/
 ```
 
-The front matter carries `name`, `version`, `protocol`, `license`, `homepage`,
-`description`, and `keywords`, which is the common subset every skill format
-understands.
+The front matter contains exactly `name` and `description`, the portable subset
+used by strict Agent Skills loaders. Release, protocol, license, and homepage
+metadata remain visible in the skill body.
 
 ### Agents that read repository instructions instead
 

@@ -102,11 +102,17 @@ if (sub === 'dist') {
     process.stdout.write(`ok   ${goos}/${goarch}  ${(fs.statSync(bin).size / 1048576).toFixed(1)} MiB  ${digest.slice(0, 12)}\n`);
   }
   if (!failed) {
+    const skillName = 'SKILL.md';
+    const skill = path.join(out, skillName);
+    fs.copyFileSync(path.join(repo, 'skill', skillName), skill);
+    const skillDigest = crypto.createHash('sha256').update(fs.readFileSync(skill)).digest('hex');
+    fs.writeFileSync(`${skill}.sha256`, `${skillDigest}  ${skillName}\n`);
+    sums.push(`${skillDigest}  ${skillName}`);
     fs.writeFileSync(path.join(out, 'checksums.txt'), `${sums.join('\n')}\n`);
     for (const script of ['install.sh', 'install.ps1']) {
       fs.copyFileSync(path.join(repo, script), path.join(out, script));
     }
-    process.stdout.write(`\n${sums.length} target(s) built into dist/, with checksums and installers\n`);
+    process.stdout.write(`\n${TARGETS.length} binaries and 1 Agent Skill built into dist/, with checksums and installers\n`);
   }
   process.exit(failed ? 1 : 0);
 }

@@ -1,30 +1,24 @@
 ---
 name: agent-fridge
-version: 0.2.1
-protocol: wcp/0.1
-license: Apache-2.0
-homepage: https://github.com/RagnarPitla/agent-fridge
 description: >-
   Coordinate with other AI agents and humans working in the same Git checkout.
   Claim the files you are about to edit, pin durable notes, hand work over, and
   read a shared board, without ever overwriting anybody else's state. Use this
   whenever more than one agent or person may be active in the same repository.
-keywords:
-  - multi-agent
-  - coordination
-  - file-locking
-  - concurrency
-  - git
-  - workspace
 ---
 
 # Agent Fridge
 
 One shared fridge door for every coding agent in your checkout.
 
-This skill is vendor-neutral and open. It is bundled with the `fridge` CLI and
-carries no vendor's proprietary format. Any agent runtime that can read a
-Markdown skill file and run a shell command can use it as-is.
+This skill is vendor-neutral and open. It is published alongside the `fridge`
+CLI and carries no vendor's proprietary format. Any agent runtime that can read
+a Markdown skill file and run a shell command can use it as-is.
+
+- Skill release: `v0.2.1`
+- Protocol: `wcp/0.1`
+- License: Apache-2.0
+- Homepage: <https://github.com/RagnarPitla/agent-fridge>
 
 ---
 
