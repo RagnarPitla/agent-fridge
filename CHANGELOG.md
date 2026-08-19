@@ -16,7 +16,19 @@ A CLI release that does not change the protocol leaves `wcp/0.1` alone.
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- The 60-second quick start in the README told people to run
+  `fridge join --vendor claude-code`, which the CLI rejects with `E_USAGE`. The
+  documented first experience was an error message. The vendor is `claude`.
+  Binaries are unaffected, so this does not need a new release.
+
+### Added
+
+- `test/unit/readme-quickstart.test.mjs` executes the quick start, checks that
+  every `fridge` command the README shows exists in `fridge help`, and checks
+  that every `--vendor` the docs pass to `join` is a vendor the CLI accepts.
+  Documentation that is never executed is a rumour.
 
 ---
 

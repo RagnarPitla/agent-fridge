@@ -132,6 +132,11 @@ on your `PATH`. Six builds are published for every release:
 
 Every asset has a matching `.sha256`, and `checksums.txt` covers the set.
 
+Both installers verify the checksum before installing, and both take
+`--dir <path>` to choose where the binary lands and `--version v0.2.0` to pin a
+release. With no arguments they use `/usr/local/bin` when it is writable and
+`~/.local/bin` otherwise.
+
 ### Have a Go toolchain?
 
 ```bash
@@ -183,7 +188,7 @@ If `fridge` is not found after installing, the install directory is not on your
 fridge init
 
 # 2. put your name on it (once per agent, per checkout)
-fridge join --agent claude --vendor claude-code
+fridge join --agent claude --vendor claude
 export FRIDGE_ACTOR=claude          # PowerShell: $env:FRIDGE_ACTOR = "claude"
 
 # 3. take a chore before you touch files
