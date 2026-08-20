@@ -151,25 +151,22 @@
           </ul>
         </div>
 
-        <div class="hero-diagram" role="img" aria-label="Four separate harnesses and terminals use Agent Fridge path claims to coordinate one shared checkout.">
-          <p class="diagram-kicker">Different harnesses, one checkout</p>
-          <div class="diagram-agents">
-            <div class="mini-agent"><strong>Agent team A</strong><span>internal task board</span></div>
-            <div class="mini-agent"><strong>Agent team B</strong><span>different harness</span></div>
-            <div class="mini-agent"><strong>Solo coding agent</strong><span>local session plan</span></div>
-            <div class="mini-agent"><strong>Human + IDE</strong><span>terminal context</span></div>
+        <div class="fridge-door hero-fridge" role="img" aria-label="A repository fridge door with separate pinned notes for a Code Review Agent, Design Agent, and QA Agent.">
+          <div class="sticky-note hero-note-review">
+            <strong>Code Review Agent</strong>
+            <span>reviewing src/checkout/**</span>
           </div>
-          <div class="diagram-arrow" aria-hidden="true">v</div>
-          <div class="record-row" aria-label="Separate records">
-            <div class="record-chip">src/api/**</div>
-            <div class="record-chip">design/**</div>
-            <div class="record-chip">docs/**</div>
-            <div class="record-chip">review only</div>
+          <div class="sticky-note hero-note-design">
+            <strong>Design Agent</strong>
+            <span>owns design/checkout/**</span>
           </div>
-          <div class="diagram-arrow" aria-hidden="true">v</div>
-          <div class="door-card">
-            <span>Cross-harness coordination</span>
-            <strong>one visible path owner</strong>
+          <div class="sticky-note hero-note-qa">
+            <strong>QA Agent</strong>
+            <span>testing src/api/**</span>
+          </div>
+          <div class="hero-fridge-caption">
+            <span>One shared checkout</span>
+            <strong>Everyone sees who owns what.</strong>
           </div>
         </div>
       </div>

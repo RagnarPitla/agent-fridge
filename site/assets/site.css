@@ -357,125 +357,6 @@ h3 {
   content: "";
 }
 
-.hero-diagram {
-  position: relative;
-  padding: 24px;
-  border: 1px solid var(--cp-border);
-  border-radius: 16px;
-  background: var(--cp-surface);
-  box-shadow: 0 0 2px var(--cp-border), 0 1px 2px var(--cp-border);
-}
-
-.hero-diagram::before {
-  position: absolute;
-  inset: 12px;
-  border: 1px solid var(--cp-border);
-  border-radius: 12px;
-  content: "";
-  pointer-events: none;
-}
-
-.diagram-kicker {
-  position: relative;
-  margin: 0 0 18px;
-  color: var(--cp-text-muted);
-  font-size: 0.76rem;
-  font-weight: 850;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.diagram-agents {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.mini-agent,
-.record-chip,
-.door-card {
-  border: 1px solid var(--cp-border);
-  background: var(--cp-surface-soft);
-}
-
-.mini-agent {
-  padding: 14px;
-  border-radius: 0.625rem;
-}
-
-.mini-agent strong {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 0.92rem;
-}
-
-.mini-agent span {
-  color: var(--cp-text-muted);
-  font-family: Consolas, "Courier New", Courier, monospace;
-  font-size: 0.78rem;
-}
-
-.diagram-arrow {
-  position: relative;
-  display: grid;
-  place-items: center;
-  min-height: 44px;
-  color: var(--cp-accent);
-  font-size: 1.4rem;
-  font-weight: 900;
-}
-
-.record-row {
-  position: relative;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.record-chip {
-  padding: 9px 6px;
-  border-top: 4px solid var(--cp-accent);
-  border-radius: 0.625rem;
-  color: var(--cp-text-muted);
-  font-family: Consolas, "Courier New", Courier, monospace;
-  font-size: 0.68rem;
-  text-align: center;
-}
-
-.door-card {
-  position: relative;
-  padding: 18px;
-  border-radius: 16px;
-}
-
-.door-card::after {
-  position: absolute;
-  top: 16px;
-  right: 18px;
-  width: 5px;
-  height: 42px;
-  border-radius: 3px;
-  background: var(--cp-border-strong);
-  content: "";
-}
-
-.door-card span {
-  display: block;
-  color: var(--cp-accent);
-  font-size: 0.72rem;
-  font-weight: 850;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
-.door-card strong {
-  display: block;
-  margin-top: 4px;
-  font-family: Consolas, "Courier New", Courier, monospace;
-  font-size: 1.4rem;
-}
-
 .article-header {
   display: grid;
   grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr);
@@ -1005,6 +886,74 @@ figcaption {
   bottom: 34px;
   left: 76px;
   transform: rotate(1deg);
+}
+
+.fridge-door.hero-fridge {
+  width: 100%;
+  min-height: 470px;
+}
+
+.hero-fridge .sticky-note {
+  width: 184px;
+  min-height: 128px;
+}
+
+.hero-fridge .sticky-note strong {
+  line-height: 1.2;
+}
+
+.hero-fridge .sticky-note span {
+  display: block;
+  margin-top: 8px;
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.75rem;
+}
+
+.hero-note-review {
+  top: 44px;
+  left: 26px;
+  transform: rotate(-2deg);
+}
+
+.hero-note-design {
+  top: 56px;
+  right: 24px;
+  transform: rotate(2deg);
+}
+
+.hero-note-qa {
+  bottom: 40px;
+  left: 54px;
+  transform: rotate(1deg);
+}
+
+.hero-fridge-caption {
+  position: absolute;
+  right: 26px;
+  bottom: 54px;
+  z-index: 2;
+  width: 170px;
+  padding: 14px;
+  border: 1px solid var(--cp-border);
+  border-left: 4px solid var(--cp-accent);
+  border-radius: 0.625rem;
+  background: var(--cp-surface-soft);
+}
+
+.hero-fridge-caption span {
+  display: block;
+  color: var(--cp-accent);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.hero-fridge-caption strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 0.84rem;
+  line-height: 1.35;
 }
 
 .workspace-shell {
@@ -1621,9 +1570,6 @@ td strong {
 html[data-theme="dark"] .section-nav a,
 html[data-theme="dark"] .hero-lede,
 html[data-theme="dark"] .section-lede,
-html[data-theme="dark"] .diagram-kicker,
-html[data-theme="dark"] .mini-agent span,
-html[data-theme="dark"] .record-chip,
 html[data-theme="dark"] .island-heading span,
 html[data-theme="dark"] .checkout-heading span,
 html[data-theme="dark"] .island-workers span,
@@ -1667,7 +1613,7 @@ html[data-theme="dark"] .not-found-card p {
     min-height: auto;
   }
 
-  .hero-diagram {
+  .hero-fridge {
     width: min(100%, 680px);
   }
 
@@ -1793,11 +1739,6 @@ html[data-theme="dark"] .not-found-card p {
     width: 100%;
   }
 
-  .diagram-agents,
-  .record-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .coordination-islands {
     padding: 14px;
   }
@@ -1833,8 +1774,39 @@ html[data-theme="dark"] .not-found-card p {
     padding: 20px;
   }
 
+  .fridge-door.hero-fridge {
+    min-height: 570px;
+  }
+
   .sticky-note {
     width: 138px;
+  }
+
+  .hero-fridge .sticky-note {
+    width: 142px;
+    min-height: 124px;
+    padding: 15px;
+  }
+
+  .hero-note-review {
+    top: 34px;
+    left: 12px;
+  }
+
+  .hero-note-design {
+    top: 50px;
+    right: 10px;
+  }
+
+  .hero-note-qa {
+    bottom: 118px;
+    left: 20px;
+  }
+
+  .hero-fridge-caption {
+    right: 12px;
+    bottom: 34px;
+    width: 148px;
   }
 
   .note-one {
@@ -1886,6 +1858,27 @@ html[data-theme="dark"] .not-found-card p {
 
   .not-found-card {
     padding: 28px 20px;
+  }
+}
+
+@media (max-width: 340px) {
+  .fridge-door.hero-fridge {
+    min-height: 650px;
+  }
+
+  .hero-fridge .sticky-note {
+    width: 132px;
+  }
+
+  .hero-note-qa {
+    bottom: 160px;
+    left: 16px;
+  }
+
+  .hero-fridge-caption {
+    right: 10px;
+    bottom: 28px;
+    width: 138px;
   }
 }
 
