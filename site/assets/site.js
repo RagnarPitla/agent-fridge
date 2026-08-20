@@ -42,11 +42,6 @@
     setTheme(current === "dark" ? "light" : "dark", true);
   });
 
-  const media = window.matchMedia("(prefers-color-scheme: dark)");
-  media.addEventListener?.("change", (event) => {
-    if (!themeQuery()) setTheme(event.matches ? "dark" : "light", false);
-  });
-
   syncThemeControl();
   updateThemeLinks();
 

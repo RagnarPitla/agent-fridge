@@ -31,8 +31,7 @@ requiredFiles.forEach((rel) => expect(fs.existsSync(path.join(repo, rel)), `miss
 
 const themeScript = `    (() => {
       const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
-      const theme =
-        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      const theme = param === "dark" ? "dark" : "light";
       document.documentElement.setAttribute("data-theme", theme);
     })();`;
 
@@ -112,6 +111,7 @@ for (const rel of ['site/index.html', 'site/404.html']) {
 const index = read('site/index.html');
 const js = read('site/assets/site.js');
 
+expect(!js.includes('prefers-color-scheme'), 'site.js overrides the light default with the system theme');
 expect(!/#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\(/.test(css), 'site.css hardcodes a component color');
 expect(css.includes('font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif'), 'site.css lost required typography');
 expect(css.includes('@media (prefers-reduced-motion: reduce)'), 'site.css has no reduced-motion treatment');
@@ -181,6 +181,7 @@ expect(preview.readUInt32BE(16) === 1280 && preview.readUInt32BE(20) === 640, 's
 
 const screenshots = [
   ['docs/assets/site/desktop-hero.png', 1440, 1000],
+  ['docs/assets/site/cross-harness-problem.png', 1440, 1200],
   ['docs/assets/site/four-agent-scenario.png', 1440, 1200],
   ['docs/assets/site/mobile-article.png', 375, 812],
 ];
@@ -189,4 +190,4 @@ for (const [rel, width, height] of screenshots) {
   expect(png.readUInt32BE(16) === width && png.readUInt32BE(20) === height, `${rel} has unexpected dimensions`);
 }
 
-process.stdout.write(`site check: ${requiredFiles.length} publication files, ${requiredOrder.length} ordered sections, ${ids.length} unique ids, and 3 browser proofs verified\n`);
+process.stdout.write(`site check: ${requiredFiles.length} publication files, ${requiredOrder.length} ordered sections, ${ids.length} unique ids, and ${screenshots.length} browser proofs verified\n`);
