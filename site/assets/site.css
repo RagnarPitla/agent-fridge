@@ -504,6 +504,166 @@ h3 {
   max-width: 940px;
 }
 
+.coordination-islands {
+  margin-top: 40px;
+  padding: 24px;
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+  background: var(--cp-surface);
+  box-shadow: 0 0 2px var(--cp-border), 0 1px 2px var(--cp-border);
+}
+
+.island-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.harness-island {
+  padding: 16px;
+  border: 1px solid var(--cp-border);
+  border-top: 4px solid var(--cp-link);
+  border-radius: 0.625rem;
+  background: var(--cp-surface-soft);
+}
+
+.island-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.island-heading span,
+.checkout-heading span {
+  color: var(--cp-text-muted);
+  font-size: 0.7rem;
+  font-weight: 850;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.island-heading strong {
+  font-size: 0.92rem;
+  text-align: right;
+}
+
+.island-workers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 18px 0;
+}
+
+.island-workers span {
+  padding: 6px 8px;
+  border: 1px solid var(--cp-border);
+  border-radius: 999px;
+  background: var(--cp-surface);
+  color: var(--cp-text-muted);
+  font-family: Consolas, "Courier New", Courier, monospace;
+  font-size: 0.72rem;
+}
+
+.harness-island code {
+  display: block;
+  padding: 8px 10px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.4rem;
+  background: var(--cp-surface);
+  color: var(--cp-success);
+  font-size: 0.72rem;
+}
+
+.all-write-line {
+  position: relative;
+  display: grid;
+  min-height: 72px;
+  place-items: center;
+}
+
+.all-write-line::before {
+  position: absolute;
+  top: 0;
+  bottom: 18px;
+  left: 50%;
+  width: 2px;
+  background: var(--cp-border-strong);
+  content: "";
+}
+
+.all-write-line::after {
+  position: absolute;
+  bottom: 12px;
+  left: calc(50% - 5px);
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid var(--cp-border-strong);
+  border-bottom: 2px solid var(--cp-border-strong);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.all-write-line span {
+  position: relative;
+  z-index: 1;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--cp-surface);
+  color: var(--cp-text-muted);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.checkout-target {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.72fr) minmax(0, 1.28fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px;
+  border: 2px solid var(--cp-danger);
+  border-radius: 0.625rem;
+  background: var(--cp-surface-soft);
+}
+
+.checkout-heading strong {
+  display: block;
+  margin-top: 4px;
+}
+
+.colliding-paths {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.colliding-paths code {
+  padding: 7px 9px;
+  border: 1px solid var(--cp-border);
+  border-radius: 0.4rem;
+  background: var(--cp-surface);
+  font-size: 0.72rem;
+}
+
+.collision-flag {
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: var(--cp-danger);
+  color: var(--cp-accent-fg);
+  font-size: 0.72rem;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.islands-caption {
+  margin: 18px 0 0;
+  color: var(--cp-text-muted);
+}
+
+.islands-caption strong {
+  color: var(--cp-text);
+}
+
 .callout {
   margin-block: 28px;
   padding: 20px 22px;
@@ -1464,6 +1624,11 @@ html[data-theme="dark"] .section-lede,
 html[data-theme="dark"] .diagram-kicker,
 html[data-theme="dark"] .mini-agent span,
 html[data-theme="dark"] .record-chip,
+html[data-theme="dark"] .island-heading span,
+html[data-theme="dark"] .checkout-heading span,
+html[data-theme="dark"] .island-workers span,
+html[data-theme="dark"] .all-write-line span,
+html[data-theme="dark"] .islands-caption,
 html[data-theme="dark"] .stat-card span,
 html[data-theme="dark"] .terminal-body .muted,
 html[data-theme="dark"] .sequence span,
@@ -1558,6 +1723,18 @@ html[data-theme="dark"] .not-found-card p {
     grid-template-columns: 1fr;
   }
 
+  .island-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .checkout-target {
+    grid-template-columns: 1fr;
+  }
+
+  .collision-flag {
+    justify-self: start;
+  }
+
   .incident-stage {
     grid-template-columns: 1fr;
   }
@@ -1619,6 +1796,19 @@ html[data-theme="dark"] .not-found-card p {
   .diagram-agents,
   .record-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .coordination-islands {
+    padding: 14px;
+  }
+
+  .island-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .island-heading strong {
+    text-align: left;
   }
 
   .incident-stage {

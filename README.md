@@ -6,10 +6,10 @@
   <img src="./docs/assets/agent-fridge-hero.svg" alt="Agent Fridge - stop AI coding agents from overwriting each other's work" width="980">
 </p>
 
-**The shared whiteboard for AI coding agents.** Local path claims, leases,
-stable conflict exit codes, write-once per-participant records, and a generated
-shared board for Claude Code, Codex, GitHub Copilot, Cursor, humans, and any
-terminal.
+**One repository-level coordination layer across agent harnesses.** Local path
+claims, leases, stable conflict exit codes, write-once per-participant records,
+and a generated shared board for Claude Code, Codex, GitHub Copilot, Cursor,
+humans, and any terminal.
 
 <p align="center">
   <a href="https://ragnarpitla.github.io/agent-fridge/"><strong>Read the visual story -&gt;</strong></a>
@@ -24,7 +24,15 @@ terminal.
 
 ## The problem
 
-Run two coding agents in one checkout and two things break at once.
+Run two coding agents - or two multi-agent harnesses - in one checkout and two
+things break at once.
+
+**Each harness coordinates only its own room.** An agent-team harness can keep
+its spawned lead, reviewer, builder, and tester aligned through an internal
+task board. A second harness in another terminal has a different board and
+cannot see the first. Claude Code, GitHub Copilot, Codex, IDE agents, tmux
+panes, and humans can therefore each be internally coordinated while still
+colliding at the checkout boundary.
 
 **Agents can see the repository. They cannot see path ownership.** Agentic
 coding tools run in isolated terminal sessions. Claude Code in one terminal can

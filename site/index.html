@@ -4,22 +4,21 @@
   <script>
     (() => {
       const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
-      const theme =
-        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      const theme = param === "dark" ? "dark" : "light";
       document.documentElement.setAttribute("data-theme", theme);
     })();
   </script>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Agent Fridge - prevent concurrent agent overwrites</title>
-  <meta name="description" content="A technical guide to Agent Fridge: path claims, leases, write-once notes, stable conflict exits, and a generated board for multiple coding agents sharing one checkout.">
+  <title>Agent Fridge - stop cross-harness agent conflicts</title>
+  <meta name="description" content="Agent Fridge gives separate AI agent harnesses, terminals, and humans shared path ownership before they edit one Git checkout.">
   <meta name="robots" content="index,follow">
   <link rel="canonical" href="https://ragnarpitla.github.io/agent-fridge/">
 
   <meta property="og:type" content="article">
   <meta property="og:site_name" content="Agent Fridge">
   <meta property="og:title" content="Stop AI coding agents from overwriting each other's work.">
-  <meta property="og:description" content="Path claims, leases, write-once notes, and a generated shared board for Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any CLI.">
+  <meta property="og:description" content="Different agent harnesses can coordinate internally and still collide in one checkout. Agent Fridge adds shared path ownership before editing starts.">
   <meta property="og:url" content="https://ragnarpitla.github.io/agent-fridge/">
   <meta property="og:image" content="https://ragnarpitla.github.io/agent-fridge/docs/assets/social-preview.png">
   <meta property="og:image:width" content="1280">
@@ -28,7 +27,7 @@
 
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Stop AI coding agents from overwriting each other's work.">
-  <meta name="twitter:description" content="The shared whiteboard for AI coding agents: path claims, leases, write-once notes, and a generated board.">
+  <meta name="twitter:description" content="One cross-harness path-ownership layer for AI agent teams, solo agents, terminals, and humans sharing a Git checkout.">
   <meta name="twitter:image" content="https://ragnarpitla.github.io/agent-fridge/docs/assets/social-preview.png">
   <meta name="twitter:image:alt" content="Agent Fridge: four terminal lanes write separate records that feed a generated shared board.">
 
@@ -135,13 +134,14 @@
           <p class="eyebrow">Agent Fridge</p>
           <h1 id="hero-heading">Stop AI coding agents from overwriting each other's work.</h1>
           <p class="hero-lede">
-            <strong>The shared whiteboard for AI coding agents.</strong>
-            Path claims, leases, write-once notes, and a generated shared board
-            for Claude Code, Codex, Pi, GitHub Copilot, Cursor, humans, and any terminal.
+            <strong>Different agent harnesses coordinate their own workers - not each other.</strong>
+            An agent team, a solo coding agent, an IDE agent, and a human can all be
+            correct inside their own context and still collide in one checkout.
+            Agent Fridge gives them one vendor-neutral path-ownership layer.
           </p>
           <div class="hero-actions">
             <a class="button primary" href="#install">Install and try it</a>
-            <a class="button" href="https://github.com/RagnarPitla/agent-fridge">Read the source</a>
+            <a class="button" href="#problem">See the coordination gap</a>
           </div>
           <ul class="hero-meta" aria-label="Agent Fridge properties">
             <li>No daemon</li>
@@ -151,25 +151,25 @@
           </ul>
         </div>
 
-        <div class="hero-diagram" role="img" aria-label="Four coding agents write separate records that feed one generated board.">
-          <p class="diagram-kicker">One checkout, separate authority</p>
+        <div class="hero-diagram" role="img" aria-label="Four separate harnesses and terminals use Agent Fridge path claims to coordinate one shared checkout.">
+          <p class="diagram-kicker">Different harnesses, one checkout</p>
           <div class="diagram-agents">
-            <div class="mini-agent"><strong>Claude Code</strong><span>claim review</span></div>
-            <div class="mini-agent"><strong>GitHub Copilot</strong><span>claim design</span></div>
-            <div class="mini-agent"><strong>Codex</strong><span>claim build</span></div>
-            <div class="mini-agent"><strong>Pi</strong><span>pin release</span></div>
+            <div class="mini-agent"><strong>Agent team A</strong><span>internal task board</span></div>
+            <div class="mini-agent"><strong>Agent team B</strong><span>different harness</span></div>
+            <div class="mini-agent"><strong>Solo coding agent</strong><span>local session plan</span></div>
+            <div class="mini-agent"><strong>Human + IDE</strong><span>terminal context</span></div>
           </div>
           <div class="diagram-arrow" aria-hidden="true">v</div>
           <div class="record-row" aria-label="Separate records">
-            <div class="record-chip">claim/A.json</div>
-            <div class="record-chip">lease/B.json</div>
-            <div class="record-chip">note/C.json</div>
-            <div class="record-chip">claim/D.json</div>
+            <div class="record-chip">src/api/**</div>
+            <div class="record-chip">design/**</div>
+            <div class="record-chip">docs/**</div>
+            <div class="record-chip">review only</div>
           </div>
           <div class="diagram-arrow" aria-hidden="true">v</div>
           <div class="door-card">
-            <span>Generated overview</span>
-            <strong>.fridge/DOOR.md</strong>
+            <span>Cross-harness coordination</span>
+            <strong>one visible path owner</strong>
           </div>
         </div>
       </div>
@@ -180,41 +180,107 @@
         <div class="article-header">
           <div>
             <p class="eyebrow">The engineering problem</p>
-            <h2 id="problem-heading">The repository is shared. Ownership is invisible.</h2>
+            <h2 id="problem-heading">Every harness has a plan. The checkout has no shared owner.</h2>
           </div>
           <p class="section-lede">
-            Agentic coding tools run in isolated terminal sessions. Each can see the
-            same files, but none can see who else is editing which path unless the team
-            builds a coordination layer.
+            A team lead can coordinate the agents it spawned through an internal task
+            board. A second harness, IDE agent, or human terminal cannot see that board,
+            and none of those private plans creates repository-wide path ownership.
           </p>
         </div>
 
         <div class="prose wide-prose">
           <p>
-            Put four agents in one checkout and every one receives a locally coherent
-            view of the repository. That view is incomplete. Claude Code can be tracing
-            checkout logic while Codex starts editing the same module. A human can be
-            changing a migration while an IDE agent decides to regenerate it. Git sees
-            the final bytes, not the ownership decision that should have happened first.
+            The failure is larger than agent versus agent. It is coordination island
+            versus coordination island. Terminal A can run a multi-agent team whose lead,
+            reviewer, builder, and tester all agree on an internal task list. Terminal B
+            can run a different harness with a different lead and a different list.
+            Terminal C can hold a solo agent or a human. Every lane can look green locally.
           </p>
           <p>
-            The resulting failures are ordinary distributed-systems failures in a
-            surprisingly small room: duplicated work, overlapping path scopes, stale
-            reads, last-writer-wins overwrites, and unclear handoffs. The models can be
-            excellent at code and still be blind to concurrency outside their session.
+            The Git checkout sits outside those harness boundaries. Claude Code, GitHub
+            Copilot, Codex, an IDE agent, tmux panes, and plain terminals can all target
+            the same path without seeing one another's intent. Git records the final
+            bytes after editing; it does not establish ownership before editing begins.
+          </p>
+        </div>
+
+        <div class="coordination-islands" aria-label="Three separate coordination islands all target one shared Git checkout">
+          <div class="island-grid">
+            <div class="harness-island">
+              <div class="island-heading">
+                <span>Terminal A</span>
+                <strong>Agent-team harness</strong>
+              </div>
+              <div class="island-workers" aria-label="Workers inside terminal A">
+                <span>lead</span>
+                <span>reviewer</span>
+                <span>builder</span>
+              </div>
+              <code>internal tasks: coordinated</code>
+            </div>
+
+            <div class="harness-island">
+              <div class="island-heading">
+                <span>Terminal B</span>
+                <strong>Different harness</strong>
+              </div>
+              <div class="island-workers" aria-label="Workers inside terminal B">
+                <span>architect</span>
+                <span>author</span>
+                <span>tester</span>
+              </div>
+              <code>separate plan: coordinated</code>
+            </div>
+
+            <div class="harness-island">
+              <div class="island-heading">
+                <span>Terminal C</span>
+                <strong>Solo agent + human</strong>
+              </div>
+              <div class="island-workers" aria-label="Workers inside terminal C">
+                <span>CLI agent</span>
+                <span>IDE agent</span>
+                <span>human</span>
+              </div>
+              <code>local context: coordinated</code>
+            </div>
+          </div>
+
+          <div class="all-write-line" aria-hidden="true">
+            <span>all three plans write into the same project</span>
+          </div>
+
+          <div class="checkout-target">
+            <div class="checkout-heading">
+              <span>Repository boundary</span>
+              <strong>one shared Git checkout</strong>
+            </div>
+            <div class="colliding-paths" aria-label="Paths that may be targeted by more than one harness">
+              <code>src/checkout/routes.ts</code>
+              <code>design/checkout/copy.md</code>
+              <code>release.md</code>
+            </div>
+            <span class="collision-flag">No universal path owner</span>
+          </div>
+
+          <p class="islands-caption">
+            <strong>Green inside one harness does not mean safe across the repository.</strong>
+            Internal task boards coordinate their own teammates. Agent Fridge coordinates
+            at the checkout boundary, where every harness and terminal can see the same claim.
           </p>
         </div>
 
         <div class="stat-grid" aria-label="Common shared-checkout failure modes">
-          <div class="stat-card"><strong>1 checkout</strong><span>Several terminals see the same mutable files.</span></div>
-          <div class="stat-card"><strong>0 ownership</strong><span>Git does not announce who intends to write next.</span></div>
-          <div class="stat-card"><strong>Silent loss</strong><span>The last clean-looking write can erase valid work.</span></div>
+          <div class="stat-card"><strong>Green inside</strong><span>Each harness believes its own team is coordinated.</span></div>
+          <div class="stat-card"><strong>Same files</strong><span>Every harness can still mutate the same checkout paths.</span></div>
+          <div class="stat-card"><strong>No shared owner</strong><span>Intent is invisible until a cross-harness claim exists.</span></div>
         </div>
 
         <div class="callout">
-          <strong>A shared status document is not a lock.</strong>
-          If every participant must read and rewrite one Markdown file, that file becomes
-          another contested resource.
+          <strong>A team task board is not a repository lock.</strong>
+          A <code>shared_tasks.md</code> file can coordinate teammates inside one harness
+          and still be invisible to every other harness touching the same project.
         </div>
       </div>
     </section>
